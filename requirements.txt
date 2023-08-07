@@ -1,0 +1,8 @@
+matplotlib
+flet
+tqdm
+mido
+numpy==1.22.4
+librosa==0.8.1
+torchaudio==0.11.0
+onnxruntime-gpu==1.11.0 # PC and Linux. Change to onnxruntime==1.11.0 if on arm or Mac
