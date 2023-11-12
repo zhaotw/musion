@@ -27,7 +27,7 @@ class MusionPCM:
 @dataclasses.dataclass
 class SaveConfig:
     dir_path: str
-    keys: List[str]
+    keys: List[str] = None
 
 @dataclasses.dataclass
 class FeatConfig:
@@ -127,6 +127,7 @@ class MusionBase(metaclass=abc.ABCMeta):
         # Optionally save the result(s) to a file
         if save_cfg and audio_path:
             audio_name = get_file_name(audio_path)
+            save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
             for key in save_cfg.keys:
                 if key not in self.result_keys:
                     raise KeyError(f'Save key error! There is no {key} for task {self.__class__.__name__}.')
@@ -136,7 +137,7 @@ class MusionBase(metaclass=abc.ABCMeta):
 
                 save_path = os.path.join(save_cfg.dir_path, audio_name + '.' + key)
                 if '.wav' in key:
-                    torchaudio.save(save_path, res[key], self._feat_cfg.sample_rate, encoding="PCM_S")
+                    torchaudio.save(save_path, res[key], self._feat_cfg.sample_rate, encoding="PCM_S", bits_per_sample=16)
                 elif 'mid' in key:
                     res[key].save(save_path)
                 else:

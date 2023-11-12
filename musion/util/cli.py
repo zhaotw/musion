@@ -1,4 +1,5 @@
 import argparse
+import logging
 
 import musion
 from musion.util.pkg_util import task_names, get_task_instance
@@ -16,7 +17,8 @@ def main():
     parser.add_argument('--print_result', action='store_true', help='Whether to print the task result(s)')
     parser.add_argument('--show_keys', action='store_true', help='Print the result keys for the specific task.')
     parser.add_argument('--save_dir', type=str,
-                        help='Directory path that you want to save the results in. Should also proivde --save_keys.')
+                        help='Directory path that you want to save the results in. Will save all result by default, \
+                              you may also proivde --save_keys to only choose certain keys to save.')
     parser.add_argument('--save_keys', type=str, nargs='+',
                         help='Choose which keys to save in a file. Query for avalible keys by --show_keys.')
 
@@ -31,7 +33,7 @@ def main():
     args_dict = vars(args)
     if args.save_dir:
         if not args.save_keys:
-            raise ValueError('Must provide --save_keys if you want to save a file for the result.')
+            logging.info(f'--save_keys not provided. Will save all the following results: {musion_task.result_keys}')
         save_cfg = musion.SaveConfig(args.save_dir, args.save_keys)
         args_dict.update({'save_cfg': save_cfg})
 
