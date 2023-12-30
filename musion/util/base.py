@@ -114,8 +114,19 @@ class MusionBase(metaclass=abc.ABCMeta):
     def _process(self, samples: np.ndarray) -> dict:
         raise NotImplementedError("Subclass must implement this method.")
 
-    def __call__(self, *, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None, **kwargs: Any) -> dict:
+    def __call__(self, *, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
+                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, **kwargs: Any) -> dict:
+        if isinstance(audio_path, List):
+            res = self.__process_multi_file(audio_path, num_threads, save_cfg)
+        elif isinstance(audio_path, str) and os.path.isdir(audio_path):
+            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg)
+        else:
+            res = self.__process_single_file(audio_path, pcm, save_cfg)
+
+        return res
+
+    def __process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
+                 save_cfg: Optional[SaveConfig] = None) -> dict:
         if audio_path:
             logging.info(f'Processing audio file: {audio_path} for task: {self.__class__.__name__}')
 
@@ -126,29 +137,13 @@ class MusionBase(metaclass=abc.ABCMeta):
 
         # Optionally save the result(s) to a file
         if save_cfg and audio_path:
-            audio_name = get_file_name(audio_path)
-            save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
-            for key in save_cfg.keys:
-                if key not in self.result_keys:
-                    raise KeyError(f'Save key error! There is no {key} for task {self.__class__.__name__}.')
-                if res[key] is None:
-                    logging.warning(f'Result for key: {key} is None, will not save a file for it.')
-                    continue
-
-                save_path = os.path.join(save_cfg.dir_path, audio_name + '.' + key)
-                if '.wav' in key:
-                    torchaudio.save(save_path, res[key], self._feat_cfg.sample_rate, encoding="PCM_S", bits_per_sample=16)
-                elif 'mid' in key:
-                    res[key].save(save_path)
-                else:
-                    np.savetxt(save_path, res[key], fmt='%s')
+            self.__save_res(res, save_cfg, audio_path)
 
         logging.debug(f"__call__ execution time: {time.time() - start_time}")
 
         return res
 
-    def process_dir(self, dir_path: str, save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, **kwargs) -> dict:
-        file_list = get_file_list(dir_path)
+    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None) -> dict:
         res = {}
         audio_durations = []
         start_time = time.time()
@@ -157,7 +152,7 @@ class MusionBase(metaclass=abc.ABCMeta):
         def serial_process(file_list, audio_durations, res):
             for audio_path in file_list:
                 audio_durations.append(librosa.get_duration(filename=audio_path))
-                cur_res = self(audio_path=audio_path, save_cfg=save_cfg)
+                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg)
                 res[get_file_name(audio_path)] = cur_res
 
         if num_threads == 0:
@@ -170,6 +165,26 @@ class MusionBase(metaclass=abc.ABCMeta):
         logging.info(f'Done! RTF: {process_time / total_audio_duration}')
 
         return res
+
+    def __save_res(self, res: dict, save_cfg: SaveConfig, audio_path: str):
+        if not os.path.exists(save_cfg.dir_path):
+            os.makedirs(save_cfg.dir_path)
+        audio_name = get_file_name(audio_path)
+        save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
+        for key in save_cfg.keys:
+            if key not in self.result_keys:
+                raise KeyError(f'Save key error! There is no {key} for task {self.__class__.__name__}.')
+            if res[key] is None:
+                logging.warning(f'Result for key: {key} is None, will not save a file for it.')
+                continue
+
+            save_path = os.path.join(save_cfg.dir_path, audio_name + '.' + key)
+            if '.wav' in key:
+                torchaudio.save(save_path, res[key], self._feat_cfg.sample_rate, encoding="PCM_S", bits_per_sample=16)
+            elif 'mid' in key:
+                res[key].save(save_path)
+            else:
+                np.savetxt(save_path, res[key], fmt='%s')
 
     @property
     @abc.abstractmethod

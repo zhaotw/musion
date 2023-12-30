@@ -10,10 +10,10 @@ def main():
     """)
 
     parser.add_argument('task', type=str, choices=task_names, help='Choose the task you would like to perform.')
-    parser.add_argument('--audio_path', type=str, help='Absolute file path to perform the task.')
-    parser.add_argument('--dir_path', type=str, help='Directory that contains audio files you want to process.')
+    parser.add_argument('audio_path', type=str, nargs='+', 
+                        help='Absolute file path to perform the task. Could be any number of files or a directory.')
     parser.add_argument('--num_threads', type=int, default=0,
-                        help='Used with --dir_path. Set to a proper number to enable parallel processing.')
+                        help='Set to a proper number to enable parallel processing.')
     parser.add_argument('--print_result', action='store_true', help='Whether to print the task result(s)')
     parser.add_argument('--show_keys', action='store_true', help='Print the result keys for the specific task.')
     parser.add_argument('--save_dir', type=str,
@@ -36,13 +36,11 @@ def main():
             logging.info(f'--save_keys not provided. Will save all the following results: {musion_task.result_keys}')
         save_cfg = musion.SaveConfig(args.save_dir, args.save_keys)
         args_dict.update({'save_cfg': save_cfg})
+    
+    if len(args_dict['audio_path']) == 1:
+        args_dict['audio_path'] = args_dict['audio_path'][0]
 
-    if args.audio_path:
-        res = musion_task(**args_dict)
-    elif args.dir_path:
-        res = musion_task.process_dir(**args_dict)
-    else:
-        raise ValueError('Must provide either --audio_path or --dir_path to proceed.')
+    res = musion_task(**args_dict)
 
     if args.print_result:
         print(res)
