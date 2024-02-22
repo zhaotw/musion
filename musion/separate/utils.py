@@ -3,7 +3,7 @@ import typing as tp
 import torch as th
 from torch.nn import functional as F
 
-def spectro(x, n_fft=512, hop_length=None):
+def spectro(x, n_fft, hop_length):
     *other, length = x.shape
     x = x.reshape(-1, length)
     is_mps = x.device.type == 'mps'
@@ -11,7 +11,7 @@ def spectro(x, n_fft=512, hop_length=None):
         x = x.cpu()
     z = th.stft(x,
                 n_fft,
-                hop_length or n_fft // 4,
+                hop_length,
                 window=th.hann_window(n_fft).to(x),
                 win_length=n_fft,
                 normalized=True,

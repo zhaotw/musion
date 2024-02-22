@@ -39,6 +39,11 @@ class Separate(MusionBase):
     def _process(self, samples: np.ndarray) -> dict:
         channels, length = samples.shape
 
+        # standardize
+        ref = samples.mean(0)
+        samples -= ref.mean()
+        samples /= ref.std()
+
         out = torch.zeros((1, 4, channels, length), device=self.device)
         sum_weight = torch.zeros(length, device=self.device)
 
@@ -66,12 +71,18 @@ class Separate(MusionBase):
             chunk_out = center_trim(chunk_out.to(self.device), len)
             chunk_length = chunk_out.shape[-1]
             out[..., offset:offset + segment_length] += (
-                weight[:chunk_length] * chunk_out).to(self.device)
-            sum_weight[offset:offset + segment_length] += weight[:chunk_length].to(self.device)
-        assert sum_weight.min() > 0
+                weight[:chunk_length] * chunk_out)
+            sum_weight[offset:offset + segment_length] += weight[:chunk_length]
+
         out /= sum_weight
 
-        return dict(zip(self.result_keys, out[0].cpu()))
+        out *= ref.std()
+        out += ref.mean()
+        out = out[0]
+        for id, src in enumerate(out):
+            out[id] /= max(1.01 * out[id].abs().max(), 1)
+
+        return dict(zip(self.result_keys, out.cpu()))
 
     def _spec(self, x):
         hl = self._feat_cfg.hop_length
@@ -111,14 +122,15 @@ class Separate(MusionBase):
         out = torch.view_as_complex(out.contiguous())
         return out
 
-    def _process_segment(self, mix):
-        mix = torch.as_tensor(mix)
-        z = self._spec(mix.to(mix.device))
-        mag = self._magnitude(z)
+    def _process_segment(self, mix_np):
+        mix = torch.as_tensor(mix_np).to(self.device)
+        z = self._spec(mix)
+
+        mag = self._magnitude(z).cpu()
         B, C, Fq, T = mag.shape
 
-        x, xt = self._predict([mix.numpy(), mag.numpy()])
-        x, xt = torch.from_numpy(x), torch.from_numpy(xt)
+        x, xt = self._predict([mix_np, mag.numpy()])
+        x, xt = torch.from_numpy(x).to(self.device), torch.from_numpy(xt).to(self.device)
 
         x_is_mps = x.device.type == "mps"
         if x_is_mps:
