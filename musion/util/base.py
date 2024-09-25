@@ -13,7 +13,6 @@ import torchaudio
 import torch
 import onnxruntime as ort
 from tqdm import tqdm
-from flet import Control
 
 from musion.util.tools import *
 
@@ -37,6 +36,7 @@ class FeatConfig:
     f_min: Optional[float] = None
     f_max: Optional[float] = None
     n_mels: Optional[int] = None
+    normalized: Union[str, bool] = False
     power: Optional[float] = 2.0
     norm: Optional[str] = None
     mel_scale: Optional[str] = 'htk'
@@ -63,7 +63,6 @@ class MusionBase(metaclass=abc.ABCMeta):
         self.pool = ThreadPoolExecutor(num_threads)
 
         self._feat = feat.to(self.device)
-        self.observers: List[Control] = []
 
     def __load_pcm(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> MusionPCM:
         if audio_path is None and pcm is None:

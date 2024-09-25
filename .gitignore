@@ -11,3 +11,9 @@ __pycache__/
 .DS_Store
 
 *.onnx
+
+test/
+test_data/
+recipes/
+musion/util/kafka
+musion/dev_tools

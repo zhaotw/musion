@@ -2,6 +2,9 @@
 A collection of MIR open-source inference tools, with a unified and concise { Python interface | CLI | GUI }.
 
 ## Current tools
+[beat](musion/beat/README.md)
+Detect beat and downbeat in music
+
 [separate](musion/separate/README.md) music source separation  
 Separate songs into "drums", "bass", "other", "vocals"
 
