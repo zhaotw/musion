@@ -12,7 +12,6 @@ import librosa
 import torchaudio
 import torch
 import onnxruntime as ort
-from tqdm import tqdm
 
 from musion.util.tools import *
 
@@ -77,6 +76,7 @@ class MusionBase(metaclass=abc.ABCMeta):
         if pcm.sample_rate != self._feat_cfg.sample_rate:
             pcm.samples = torchaudio.transforms.Resample(pcm.sample_rate, self._feat_cfg.sample_rate)(
                 torch.from_numpy(pcm.samples))
+            pcm.sample_rate = self._feat_cfg.sample_rate
 
         pcm.samples = np.asarray(pcm.samples)
 
@@ -99,7 +99,7 @@ class MusionBase(metaclass=abc.ABCMeta):
             futures.append(self.pool.submit(fn, np.stack(inputs[i : i + batch_size])))
 
         res = []
-        for i, f in enumerate(tqdm(futures)):
+        for i, f in enumerate(futures):
             res += f.result()
 
         return res
@@ -114,23 +114,27 @@ class MusionBase(metaclass=abc.ABCMeta):
         raise NotImplementedError("Subclass must implement this method.")
 
     def __call__(self, *, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, **kwargs: Any) -> dict:
+                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
+        if save_cfg:
+            save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
         if isinstance(audio_path, List):
-            res = self.__process_multi_file(audio_path, num_threads, save_cfg)
+            res = self.__process_multi_file(audio_path, num_threads, save_cfg, overwrite)
         elif isinstance(audio_path, str) and os.path.isdir(audio_path):
-            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg)
+            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg, overwrite)
         else:
-            res = self.__process_single_file(audio_path, pcm, save_cfg)
+            res = self.__process_single_file(audio_path, pcm, save_cfg, overwrite)
 
         return res
 
     def __process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None) -> dict:
+                 save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
         if audio_path:
-            logging.info(f'Processing audio file: {audio_path} for task: {self.__class__.__name__}')
+            logging.debug(f'Processing audio file: {audio_path} for task: {self.__class__.__name__}')
+            if not overwrite and save_cfg and check_exist(audio_path, save_cfg):
+                logging.info(f'File {audio_path} already processed, skip.')
+                return {}
 
         start_time = time.time()
-
         pcm = self.__load_pcm(audio_path, pcm)
         res = self._process(pcm.samples)
 
@@ -142,7 +146,8 @@ class MusionBase(metaclass=abc.ABCMeta):
 
         return res
 
-    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None) -> dict:
+    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None,
+                            overwrite: bool = False) -> dict:
         res = {}
         audio_durations = []
         start_time = time.time()
@@ -151,7 +156,7 @@ class MusionBase(metaclass=abc.ABCMeta):
         def serial_process(file_list, audio_durations, res):
             for audio_path in file_list:
                 audio_durations.append(librosa.get_duration(filename=audio_path))
-                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg)
+                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg, overwrite=overwrite)
                 res[get_file_name(audio_path)] = cur_res
 
         if num_threads == 0:
@@ -160,8 +165,8 @@ class MusionBase(metaclass=abc.ABCMeta):
             parallel_process(num_threads, serial_process, file_list, audio_durations, res)
 
         process_time = time.time() - start_time
-        total_audio_duration = sum(audio_durations)
-        logging.info(f'Done! RTF: {process_time / total_audio_duration}')
+        total_audio_duration = max(sum(audio_durations), 1)
+        logging.debug(f'Done! RTF: {process_time / total_audio_duration}')
 
         return res
 
@@ -169,7 +174,7 @@ class MusionBase(metaclass=abc.ABCMeta):
         if not os.path.exists(save_cfg.dir_path):
             os.makedirs(save_cfg.dir_path)
         audio_name = get_file_name(audio_path)
-        save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
+
         for key in save_cfg.keys:
             if key not in self.result_keys:
                 raise KeyError(f'Save key error! There is no {key} for task {self.__class__.__name__}.')

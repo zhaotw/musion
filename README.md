@@ -1,8 +1,8 @@
 # MUSION, a toolbox for music information retrieval and music signal processing.
 A collection of MIR open-source inference tools, with a unified and concise { Python interface | CLI | GUI }.
 
-## Current tools
-[beat](musion/beat/README.md)
+## Available tools
+[beat](musion/beat/README.md)    
 Detect beat and downbeat in music
 
 [separate](musion/separate/README.md) music source separation  
@@ -53,7 +53,8 @@ struct(audio_path='dir/audio.wav', save_cfg=save_cfg)
 
 # Enable parallel processing when input contains multiple files, just set a proper number for num_threads
 struct(audio_path='dir/', num_threads=5)
-
+# Overwrite the existing result
+struct(audio_path='dir/', overwrite=True)
 ```
 ## Command-Line Interface
 Almost the same parameters as above. Type '$ musion -h' for more details. Here's a comprehensive example.

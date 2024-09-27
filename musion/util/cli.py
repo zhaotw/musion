@@ -21,6 +21,7 @@ def main():
                               you may also proivde --save_keys to only choose certain keys to save.')
     parser.add_argument('--save_keys', type=str, nargs='+',
                         help='Choose which keys to save in a file. Query for avalible keys by --show_keys.')
+    parser.add_argument('--overwrite', action='store_true', help='Overwrite the results if they already exist.')
 
     args = parser.parse_args()
 

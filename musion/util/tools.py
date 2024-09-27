@@ -13,6 +13,15 @@ def get_file_name(file_path):
     """ /dir/test.wav -> test """
     return os.path.splitext(os.path.split(file_path)[1])[0]
 
+def check_exist(audio_path, save_cfg):
+    audio_name = get_file_name(audio_path)
+    for key in save_cfg.keys:
+        tgt_path = os.path.join(save_cfg.dir_path, f"{audio_name}.{key}")
+        if not os.path.exists(tgt_path):
+            return False
+
+    return True
+
 def parallel_process(num_threads: int, fn: Callable, file_list: list, *fn_args):
     num_threads = min(num_threads, len(file_list))
     files_per_thread = math.ceil(len(file_list) / num_threads)
@@ -108,7 +117,7 @@ def deframe(x):
 
         return y
 
-def convert_audio_channels(wav, channels):
+def convert_audio_channels(wav: np.ndarray, channels: int):
     """Convert audio to the given number of channels."""
     src_channels = wav.shape[-2]
     if src_channels == channels:
@@ -117,7 +126,7 @@ def convert_audio_channels(wav, channels):
         # Case 1:
         # The caller asked 1-channel audio, but the stream have multiple
         # channels, downmix all channels.
-        wav = wav.mean(dim=-2, keepdim=True)
+        wav = wav.mean(-2, keepdims=True)
     elif src_channels == 1:
         # Case 2:
         # The caller asked for multiple channels, but the input file have
