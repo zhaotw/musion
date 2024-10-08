@@ -40,10 +40,67 @@ class FeatConfig:
     norm: Optional[str] = None
     mel_scale: Optional[str] = 'htk'
 
-class MusionBase(metaclass=abc.ABCMeta):
-    def __init__(self, need_mono_pcm: bool, feat: torch.nn.Module, model_path: str) -> None:
-        self.mono = need_mono_pcm
+class TaskDispatcher(metaclass=abc.ABCMeta):
+    def __init__(self) -> None:
+        num_threads = max(cpu_count() // 2, 1)
+        self.pool = ThreadPoolExecutor(num_threads)
 
+    def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
+        futures = []
+        for i in range(0, len(inputs), batch_size):
+            futures.append(self.pool.submit(fn, np.stack(inputs[i : i + batch_size])))
+
+        res = []
+        for i, f in enumerate(futures):
+            res += f.result()
+
+        return res
+
+    @abc.abstractmethod
+    def _process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
+                save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
+        raise NotImplementedError("Subclass must implement this method.")
+
+    def __call__(self, *, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
+                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
+
+        if isinstance(audio_path, List):
+            res = self.__process_multi_file(audio_path, num_threads, save_cfg, overwrite)
+        elif isinstance(audio_path, str) and os.path.isdir(audio_path):
+            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg, overwrite)
+        else:
+            res = self._process_single_file(audio_path, pcm, save_cfg, overwrite)
+
+        return res
+
+    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None,
+                            overwrite: bool = False) -> dict:
+        res = {}
+        audio_durations = []
+        start_time = time.time()
+        res = {}
+
+        def serial_process(file_list, audio_durations, res):
+            for audio_path in file_list:
+                audio_durations.append(librosa.get_duration(filename=audio_path))
+                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg, overwrite=overwrite)
+                res[get_file_name(audio_path)] = cur_res
+
+        if num_threads == 0:
+            serial_process(file_list, audio_durations, res)
+        else:
+            parallel_process(num_threads, serial_process, file_list, audio_durations, res)
+
+        process_time = time.time() - start_time
+        total_audio_duration = max(sum(audio_durations), 1)
+        logging.debug(f'Done! RTF: {process_time / total_audio_duration}')
+
+        return res
+
+class MusionBase(TaskDispatcher):
+    def __init__(self, need_mono_pcm: bool, model_path: str) -> None:
+        super().__init__()
+        self.mono = need_mono_pcm
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         if not os.path.exists(model_path):
@@ -58,12 +115,21 @@ class MusionBase(metaclass=abc.ABCMeta):
         providers.append('CPUExecutionProvider')
         self.__ort_session = ort.InferenceSession(model_path, sess_options=ort_options, providers=providers)
 
-        num_threads = max(cpu_count() // 2, 1)
-        self.pool = ThreadPoolExecutor(num_threads)
+    @property
+    @abc.abstractmethod
+    def _feat_cfg(self) -> FeatConfig:
+        raise NotImplementedError("Subclass must implement this method.")
 
-        self._feat = feat.to(self.device)
+    @abc.abstractmethod
+    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
+        raise NotImplementedError("Subclass must implement this method.")
 
-    def __load_pcm(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> MusionPCM:
+    @property
+    @abc.abstractmethod
+    def result_keys(self) -> List[str]:
+        raise NotImplementedError("Subclass must implement this method.")
+
+    def _load_pcm(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> MusionPCM:
         if audio_path is None and pcm is None:
             raise ValueError('Should provide either audio path or pcm to proceed.')
 
@@ -92,42 +158,12 @@ class MusionBase(metaclass=abc.ABCMeta):
             model_input = [model_input]
         ort_input = {i.name: d.astype(np.float32) for i, d in zip(self.__ort_session.get_inputs(), model_input)}
         return self.__ort_session.run(None, input_feed=ort_input)
+    
+    def _process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
+                save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
+        if save_cfg and not save_cfg.keys:
+            save_cfg.keys = self.result_keys
 
-    def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
-        futures = []
-        for i in range(0, len(inputs), batch_size):
-            futures.append(self.pool.submit(fn, np.stack(inputs[i : i + batch_size])))
-
-        res = []
-        for i, f in enumerate(futures):
-            res += f.result()
-
-        return res
-
-    @property
-    @abc.abstractmethod
-    def _feat_cfg(self) -> FeatConfig:
-        raise NotImplementedError("Subclass must implement this method.")
-
-    @abc.abstractmethod
-    def _process(self, samples: np.ndarray) -> dict:
-        raise NotImplementedError("Subclass must implement this method.")
-
-    def __call__(self, *, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
-        if save_cfg:
-            save_cfg.keys = save_cfg.keys if save_cfg.keys else self.result_keys
-        if isinstance(audio_path, List):
-            res = self.__process_multi_file(audio_path, num_threads, save_cfg, overwrite)
-        elif isinstance(audio_path, str) and os.path.isdir(audio_path):
-            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg, overwrite)
-        else:
-            res = self.__process_single_file(audio_path, pcm, save_cfg, overwrite)
-
-        return res
-
-    def __process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
         if audio_path:
             logging.debug(f'Processing audio file: {audio_path} for task: {self.__class__.__name__}')
             if not overwrite and save_cfg and check_exist(audio_path, save_cfg):
@@ -135,38 +171,13 @@ class MusionBase(metaclass=abc.ABCMeta):
                 return {}
 
         start_time = time.time()
-        pcm = self.__load_pcm(audio_path, pcm)
-        res = self._process(pcm.samples)
+        res = self._process(audio_path, pcm)
 
         # Optionally save the result(s) to a file
         if save_cfg and audio_path:
             self.__save_res(res, save_cfg, audio_path)
 
-        logging.debug(f"__call__ execution time: {time.time() - start_time}")
-
-        return res
-
-    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None,
-                            overwrite: bool = False) -> dict:
-        res = {}
-        audio_durations = []
-        start_time = time.time()
-        res = {}
-
-        def serial_process(file_list, audio_durations, res):
-            for audio_path in file_list:
-                audio_durations.append(librosa.get_duration(filename=audio_path))
-                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg, overwrite=overwrite)
-                res[get_file_name(audio_path)] = cur_res
-
-        if num_threads == 0:
-            serial_process(file_list, audio_durations, res)
-        else:
-            parallel_process(num_threads, serial_process, file_list, audio_durations, res)
-
-        process_time = time.time() - start_time
-        total_audio_duration = max(sum(audio_durations), 1)
-        logging.debug(f'Done! RTF: {process_time / total_audio_duration}')
+        logging.debug(f"{self.__class__.__name__}__call__ execution time: {time.time() - start_time}")
 
         return res
 
@@ -189,8 +200,3 @@ class MusionBase(metaclass=abc.ABCMeta):
                 res[key].save(save_path)
             else:
                 np.savetxt(save_path, res[key], fmt='%s')
-
-    @property
-    @abc.abstractmethod
-    def result_keys(self) -> List[str]:
-        raise NotImplementedError("Subclass must implement this method.")

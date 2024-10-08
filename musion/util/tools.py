@@ -66,26 +66,32 @@ def median_filter(result_np, sample):
         filtered_np = np.delete(filtered_np, len(filtered_np) - 1)
     return filtered_np
 
-def enframe(x, segment_samples):
+def enframe(x, hop, frame_size, window_start=0):
     """Enframe long sequence to short segments.
 
     Args:
         x: (audio_samples)
-        segment_samples: int
+        frame_size: int
 
     Returns:
-        batch: (N, segment_samples)
+        batch: (N, frame_size)
     """
+    #TODO np.pad may be slow, consider np.zeros_like
+
     batch = []
 
-    pointer = 0
-    while pointer + segment_samples <= x.shape[0]:
-        batch.append(x[pointer : pointer + segment_samples])
-        pointer += segment_samples // 2
+    pointer = 0 - window_start
+    while pointer + frame_size <= x.shape[0]:
+        if pointer < 0:
+            batch.append(np.pad(x[0 : pointer + frame_size], (-pointer, 0), 'constant',
+                   constant_values=(0, 0)))
+        else:
+            batch.append(x[pointer : pointer + frame_size])
+        pointer += hop
 
     # pad
-    if batch[-1].shape[0] < segment_samples:
-        batch[-1] = np.pad(batch[-1], (0, segment_samples - batch[-1].shape[0]), 'constant',
+    if batch[-1].shape[0] < frame_size:
+        batch[-1] = np.pad(batch[-1], (0, frame_size - batch[-1].shape[0]), 'constant',
                constant_values=(0, 0))
 
     return batch

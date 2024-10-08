@@ -1,12 +1,12 @@
 import os
 import math
+from typing import Optional
 
-import numpy as np
 import torch
 from torchaudio.transforms import Spectrogram
 from torch.nn import functional as F
 
-from musion.util.base import MusionBase, FeatConfig
+from musion.util.base import MusionBase, FeatConfig, MusionPCM
 from .utils import *
 
 MODULE_PATH = os.path.dirname(__file__)
@@ -17,15 +17,14 @@ class Separate(MusionBase):
     def __init__(self) -> None:
         super().__init__(
             False,
-            Spectrogram(
+            os.path.join(MODULE_PATH, 'separate.onnx'))
+        self._feat = Spectrogram(
                 n_fft=self._feat_cfg.n_fft,
                 hop_length=self._feat_cfg.hop_length,
                 win_length=self._feat_cfg.n_fft,
                 normalized=True,
                 center=True
-            ),
-            os.path.join(MODULE_PATH, 'separate.onnx'))
-
+            ).to(self.device)
         self.training_length = 343980 # 39 / 5 * 44100
 
     @property
@@ -36,7 +35,8 @@ class Separate(MusionBase):
             hop_length=1024,
         )
 
-    def _process(self, samples: np.ndarray) -> dict:
+    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
+        samples = self._load_pcm(audio_path, pcm).samples
         channels, length = samples.shape
 
         # standardize
@@ -106,27 +106,12 @@ class Separate(MusionBase):
         x = x[..., pad: pad + length]
         return x
 
-    def _magnitude(self, z):
-        # return the magnitude of the spectrogram, except when cac is True,
-        # in which case we just move the complex dimension to the channel one.
-
-        B, C, Fr, T = z.shape
-        m = torch.view_as_real(z).permute(0, 1, 4, 2, 3)
-        m = m.reshape(B, C * 2, Fr, T)
-
-        return m
-
-    def _mask(self, m):
-        B, S, C, Fr, T = m.shape
-        out = m.view(B, S, -1, 2, Fr, T).permute(0, 1, 2, 4, 5, 3)
-        out = torch.view_as_complex(out.contiguous())
-        return out
 
     def _process_segment(self, mix_np):
         mix = torch.as_tensor(mix_np).to(self.device)
         z = self._spec(mix)
 
-        mag = self._magnitude(z).cpu()
+        mag = magnitude(z).cpu()
         B, C, Fq, T = mag.shape
 
         x, xt = self._predict([mix_np, mag.numpy()])
@@ -136,7 +121,7 @@ class Separate(MusionBase):
         if x_is_mps:
             x = x.cpu()
 
-        zout = self._mask(x)
+        zout = mask(x)
 
         x = self._ispec(zout, self.training_length)
 

@@ -8,7 +8,7 @@ Detect beat and downbeat in music
 [separate](musion/separate/README.md) music source separation  
 Separate songs into "drums", "bass", "other", "vocals"
 
-[struct](musion/struct/README.md) music structure analysis / music segmentation
+[struct](musion/struct/README.md) music structure analysis / music segmentation  
 Detect chorus part for pop songs
 
 [transcribe](musion/transcribe/README.md) automatic music transcription  

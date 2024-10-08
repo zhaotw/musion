@@ -22,10 +22,18 @@ def main():
     parser.add_argument('--save_keys', type=str, nargs='+',
                         help='Choose which keys to save in a file. Query for avalible keys by --show_keys.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite the results if they already exist.')
+    parser.add_argument('--target_instrument', type=str, choices=['piano', 'vocal'],
+                        help='Specify the target instrument for the transcribe task.')
 
     args = parser.parse_args()
 
-    musion_task = get_task_instance(args.task)
+    init_kwargs = {}
+    if args.task == 'transcribe':
+        if not args.target_instrument:
+            raise ValueError('Please add --target_instrument for the transcribe task.')
+        init_kwargs['target_instrument'] = args.target_instrument
+
+    musion_task = get_task_instance(args.task, **init_kwargs)
 
     if args.show_keys:
         print(musion_task.result_keys)

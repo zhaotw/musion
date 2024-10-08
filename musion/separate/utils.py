@@ -56,52 +56,36 @@ def pad1d(x: th.Tensor, paddings: tp.Tuple[int, int], mode: str = 'constant', va
             x = F.pad(x, (extra_pad_left, extra_pad_right))
     out = F.pad(x, paddings, mode, value)
 
-    assert (out[..., padding_left: padding_left + length] == x0).all()
     return out
 
-def center_trim(tensor: th.Tensor, reference: int):
+def center_trim(tensor, reference: int):
     """
     Center trim `tensor` with respect to `reference`, along the last dimension.
     `reference` can also be a number, representing the length to trim to.
     If the size difference != 0 mod 2, the extra sample is removed on the right side.
     """
-
-    delta = tensor.size(-1) - reference
+    delta = tensor.shape[-1] - reference
 
     if delta:
         tensor = tensor[..., delta // 2:-(delta - delta // 2)]
     return tensor
 
 class TensorChunk:
-    def __init__(self, tensor, offset=0, length=None):
+    def __init__(self, tensor, offset, length):
         total_length = tensor.shape[-1]
-        assert offset >= 0
-        assert offset < total_length
 
-        if length is None:
-            length = total_length - offset
-        else:
-            length = min(total_length - offset, length)
 
-        if isinstance(tensor, TensorChunk):
-            self.tensor = tensor.tensor
-            self.offset = offset + tensor.offset
-        else:
-            self.tensor = tensor
-            self.offset = offset
+        length = min(total_length - offset, length)
+
+
+        self.tensor = tensor
+        self.offset = offset
+
         self.length = length
-        self.device = tensor.device
-
-    @property
-    def shape(self):
-        shape = list(self.tensor.shape)
-        shape[-1] = self.length
-        return shape
 
     def padded(self, target_length):
         delta = target_length - self.length
         total_length = self.tensor.shape[-1]
-        assert delta >= 0
 
         start = self.offset - delta // 2
         end = start + target_length
@@ -113,6 +97,20 @@ class TensorChunk:
         pad_right = end - correct_end
 
         out = F.pad(self.tensor[..., correct_start:correct_end], (pad_left, pad_right))
-        assert out.shape[-1] == target_length
+
         return out
 
+def magnitude(z):
+    # return the magnitude of the spectrogram, except when cac is True,
+    # in which case we just move the complex dimension to the channel one.
+
+    B, C, Fr, T = z.shape
+    m = th.view_as_real(z).permute(0, 1, 4, 2, 3)
+    m = m.reshape(B, C * 2, Fr, T)
+    return m
+
+def mask(m):
+    B, S, C, Fr, T = m.shape
+    out = m.view(B, S, -1, 2, Fr, T).permute(0, 1, 2, 4, 5, 3)
+    out = th.view_as_complex(out.contiguous())
+    return out

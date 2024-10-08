@@ -1,11 +1,12 @@
 import os
 import dataclasses
+from typing import Optional
 
 import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram
 
-from musion.util.base import MusionBase, FeatConfig
+from musion.util.base import MusionBase, FeatConfig, MusionPCM
 from musion.util.tools import normalize, median_filter
 
 MODULE_PATH = os.path.dirname(__file__)
@@ -14,8 +15,8 @@ class Struct(MusionBase):
     def __init__(self) -> None:
         super().__init__(
             True,
-            MelSpectrogram(**dataclasses.asdict(self._feat_cfg)),
             os.path.join(MODULE_PATH, 'struct.onnx'))
+        self._feat = MelSpectrogram(**dataclasses.asdict(self._feat_cfg)).to(self.device)
 
     @property
     def _feat_cfg(self) -> FeatConfig:
@@ -30,8 +31,9 @@ class Struct(MusionBase):
             norm="slaney"
         )
 
-    def _process(self, samples: np.ndarray) -> dict:
-        feat = self._feat(torch.from_numpy(samples).to(self.device)).cpu().numpy()
+    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
+        pcm = self._load_pcm(audio_path, pcm)
+        feat = self._feat(torch.from_numpy(pcm.samples).to(self.device)).cpu().numpy()
         num_frames = feat.shape[-1]
         remain = num_frames % 9
         remain_np = np.zeros([128, 9 - remain, 1])

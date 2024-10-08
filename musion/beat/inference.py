@@ -1,11 +1,11 @@
 import os
-from typing import Any
+from typing import Optional
 
 import torch
 from torchaudio.transforms import MelSpectrogram
 
 from musion.separate.utils import *
-from musion.util.base import FeatConfig, MusionBase
+from musion.util.base import FeatConfig, MusionBase, MusionPCM
 from musion.beat.postprocessor import Postprocessor
 from musion.beat.utils import *
 
@@ -16,9 +16,9 @@ MODULE_PATH = os.path.dirname(__file__)
 class Beat(MusionBase):
     def __init__(self, meter_change_detection: bool = False) -> None:
         super().__init__(True, 
-                         MelSpectrogram(**self._feat_cfg.__dict__),
                          os.path.join(MODULE_PATH, 'beat.onnx'))
 
+        self._feat = MelSpectrogram(**self._feat_cfg.__dict__).to(self.device)
         self.postprocessor = Postprocessor('minimal' if meter_change_detection else 'dbn')
 
     @property
@@ -35,8 +35,9 @@ class Beat(MusionBase):
             normalized='frame_length'
         )
 
-    def _process(self, samples: np.ndarray, **kwargs: Any) -> dict:
-        samples = torch.from_numpy(samples[0]).to(self.device)
+    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
+        pcm = self._load_pcm(audio_path, pcm)
+        samples = torch.from_numpy(pcm.samples[0]).to(self.device)
         feat = self._feat(samples).T
         spec = torch.log1p(1000 * feat)
 
