@@ -1,5 +1,4 @@
 matplotlib
-flet
 tqdm
 mido
 numpy==1.22.4

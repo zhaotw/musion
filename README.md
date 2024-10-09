@@ -2,7 +2,7 @@
 A collection of MIR open-source inference tools, with a unified and concise { Python interface | CLI | GUI }.
 
 ## Available tools
-[beat](musion/beat/README.md)    
+[beat](musion/beat/README.md) beat tracking    
 Detect beat and downbeat in music
 
 [separate](musion/separate/README.md) music source separation  
@@ -12,10 +12,10 @@ Separate songs into "drums", "bass", "other", "vocals"
 Detect chorus part for pop songs
 
 [transcribe](musion/transcribe/README.md) automatic music transcription  
-Only support for piano transcription now
+Support for piano or vocal transcription now
 
 ## Installation
-1. Download ONNX model files from https://zenodo.org/record/8183131, and put them in the corresponding folders.
+1. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
 2. Install locally.
 ```shell
 pip install .
