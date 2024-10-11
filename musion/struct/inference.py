@@ -6,12 +6,16 @@ import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram
 
-from musion.util.base import MusionBase, FeatConfig, MusionPCM
+from musion.util.base import MusionBase, FeatConfig, MusionPCM, TaskDispatcher
 from musion.util.tools import normalize, median_filter
 
 MODULE_PATH = os.path.dirname(__file__)
 
-class Struct(MusionBase):
+class Struct(TaskDispatcher):
+    def __init__(self, num_workers: int = 1) -> None:
+        super().__init__(_Struct(), num_workers)
+
+class _Struct(MusionBase):
     def __init__(self) -> None:
         super().__init__(
             True,

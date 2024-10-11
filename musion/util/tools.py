@@ -1,7 +1,5 @@
-from typing import Callable
 import os
-import threading
-import math
+
 import copy
 
 import numpy as np
@@ -21,18 +19,6 @@ def check_exist(audio_path, save_cfg):
             return False
 
     return True
-
-def parallel_process(num_threads: int, fn: Callable, file_list: list, *fn_args):
-    num_threads = min(num_threads, len(file_list))
-    files_per_thread = math.ceil(len(file_list) / num_threads)
-    threads = []
-
-    for i in range(0, len(file_list), files_per_thread):
-        end_idx = min(i + files_per_thread, len(file_list))
-        threads.append(threading.Thread(target=fn, args=[file_list[i:end_idx], *fn_args]))
-        threads[-1].start()
-    for th in threads:
-        th.join()
 
 def normalize(data):
     new_np = np.zeros(len(data))

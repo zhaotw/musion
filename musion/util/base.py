@@ -5,7 +5,7 @@ import logging
 import abc
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count
+from multiprocessing import cpu_count, set_start_method
 
 import numpy as np
 import librosa
@@ -14,6 +14,7 @@ import torch
 import onnxruntime as ort
 
 from musion.util.tools import *
+from musion.util.parallel import *
 
 logging.basicConfig(level=logging.INFO)
 
@@ -41,63 +42,42 @@ class FeatConfig:
     mel_scale: Optional[str] = 'htk'
 
 class TaskDispatcher(metaclass=abc.ABCMeta):
-    def __init__(self) -> None:
-        num_threads = max(cpu_count() // 2, 1)
-        self.pool = ThreadPoolExecutor(num_threads)
+    def __init__(self, task: "MusionBase", num_workers: int = 1, **task_init_kwargs) -> None:
+        self.__task = task
+        self.__num_workers = num_workers
+        self.__task_init_kwargs = task_init_kwargs
+        set_start_method('spawn')
 
-    def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
-        futures = []
-        for i in range(0, len(inputs), batch_size):
-            futures.append(self.pool.submit(fn, np.stack(inputs[i : i + batch_size])))
-
-        res = []
-        for i, f in enumerate(futures):
-            res += f.result()
-
-        return res
-
-    @abc.abstractmethod
-    def _process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
-                save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
-        raise NotImplementedError("Subclass must implement this method.")
-
-    def __call__(self, *, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
+    def __call__(self, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
                  save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
-
         if isinstance(audio_path, List):
-            res = self.__process_multi_file(audio_path, num_threads, save_cfg, overwrite)
+            res = self.__process_multi_file(audio_path, num_threads, save_cfg=save_cfg, overwrite=overwrite)
         elif isinstance(audio_path, str) and os.path.isdir(audio_path):
-            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg, overwrite)
+            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg=save_cfg, overwrite=overwrite)
         else:
-            res = self._process_single_file(audio_path, pcm, save_cfg, overwrite)
+            res = self.__task(audio_path, pcm, save_cfg, overwrite)
 
         return res
 
-    def __process_multi_file(self, file_list: list, num_threads: int, save_cfg: Optional[SaveConfig] = None,
-                            overwrite: bool = False) -> dict:
-        res = {}
-        audio_durations = []
-        start_time = time.time()
+    def __process_multi_file(self, file_list: list, num_threads: int, **kwargs) -> dict:
         res = {}
 
-        def serial_process(file_list, audio_durations, res):
-            for audio_path in file_list:
-                audio_durations.append(librosa.get_duration(filename=audio_path))
-                cur_res = self.__process_single_file(audio_path=audio_path, save_cfg=save_cfg, overwrite=overwrite)
-                res[get_file_name(audio_path)] = cur_res
-
-        if num_threads == 0:
-            serial_process(file_list, audio_durations, res)
+        if self.__num_workers > 1:
+            parallel_process(self.__num_workers, self.__task.__class__, file_list, **kwargs)
         else:
-            parallel_process(num_threads, serial_process, file_list, audio_durations, res)
+            def serial_process(file_list, res):
+                for audio_path in file_list:
+                    cur_res = self.__task(audio_path, **kwargs)
+                    res[get_file_name(audio_path)] = cur_res
 
-        process_time = time.time() - start_time
-        total_audio_duration = max(sum(audio_durations), 1)
-        logging.debug(f'Done! RTF: {process_time / total_audio_duration}')
+            if num_threads == 0:
+                serial_process(file_list, res)
+            else:
+                concurrent_process(num_threads, serial_process, file_list, res)
 
         return res
 
-class MusionBase(TaskDispatcher):
+class MusionBase(metaclass=abc.ABCMeta):
     def __init__(self, need_mono_pcm: bool, model_path: str) -> None:
         super().__init__()
         self.mono = need_mono_pcm
@@ -114,6 +94,9 @@ class MusionBase(TaskDispatcher):
             providers.append('CUDAExecutionProvider')
         providers.append('CPUExecutionProvider')
         self.__ort_session = ort.InferenceSession(model_path, sess_options=ort_options, providers=providers)
+
+        num_threads = max(cpu_count() // 2, 1)
+        self.__batch_predict_pool = ThreadPoolExecutor(num_threads)
 
     @property
     @abc.abstractmethod
@@ -158,8 +141,19 @@ class MusionBase(TaskDispatcher):
             model_input = [model_input]
         ort_input = {i.name: d.astype(np.float32) for i, d in zip(self.__ort_session.get_inputs(), model_input)}
         return self.__ort_session.run(None, input_feed=ort_input)
-    
-    def _process_single_file(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
+
+    def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
+        futures = []
+        for i in range(0, len(inputs), batch_size):
+            futures.append(self.__batch_predict_pool.submit(fn, np.stack(inputs[i : i + batch_size])))
+
+        res = []
+        for i, f in enumerate(futures):
+            res += f.result()
+
+        return res
+
+    def __call__(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
                 save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
         if save_cfg and not save_cfg.keys:
             save_cfg.keys = self.result_keys

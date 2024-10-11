@@ -5,15 +5,18 @@ import torch
 from torchaudio.transforms import MelSpectrogram
 
 from musion.separate.utils import *
-from musion.util.base import FeatConfig, MusionBase, MusionPCM
+from musion.util.base import FeatConfig, MusionBase, MusionPCM, TaskDispatcher
 from musion.beat.postprocessor import Postprocessor
 from musion.beat.utils import *
 
 
 MODULE_PATH = os.path.dirname(__file__)
 
+class Beat(TaskDispatcher):
+    def __init__(self, num_workers: int = 1, meter_change_detection: bool = False):
+        super().__init__(_Beat(meter_change_detection), num_workers, meter_change_detection=meter_change_detection)
 
-class Beat(MusionBase):
+class _Beat(MusionBase):
     def __init__(self, meter_change_detection: bool = False) -> None:
         super().__init__(True, 
                          os.path.join(MODULE_PATH, 'beat.onnx'))

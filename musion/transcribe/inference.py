@@ -13,26 +13,21 @@ from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
 
 MODULE_PATH = os.path.dirname(__file__)
 
-# Abstract factory class
 class Transcribe(TaskDispatcher): 
-    def __init__(self, target_instrument: str):
-        self.model = self.__create(target_instrument)
-        super().__init__()
-
-    def _process_single_file(self, *args) -> dict:
-        return self.model._process_single_file(*args)
+    def __init__(self, target_instrument: str, num_workers: int = 1):
+        super().__init__(self.__create(target_instrument), num_workers)
 
     @staticmethod
     def __create(target_instrument: str):
         if target_instrument == 'piano':
-            return PianoTranscribe()
+            return _PianoTranscribe()
         elif target_instrument == 'vocal':
-            return VocalTranscribe()
+            return _VocalTranscribe()
         else:
             raise ValueError(f"Unsupported instrument: {target_instrument}")
 
 
-class PianoTranscribe(MusionBase):
+class _PianoTranscribe(MusionBase):
     def __init__(self) -> None:
         super().__init__(
             True,
@@ -85,7 +80,7 @@ class PianoTranscribe(MusionBase):
     def result_keys(self):
         return ['mid']
 
-class VocalTranscribe(MusionBase):
+class _VocalTranscribe(MusionBase):
     def __init__(self) -> None:
         super().__init__(
             True,

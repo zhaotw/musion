@@ -6,12 +6,16 @@ import torch
 from torchaudio.transforms import Spectrogram
 from torch.nn import functional as F
 
-from musion.util.base import MusionBase, FeatConfig, MusionPCM
+from musion.util.base import MusionBase, FeatConfig, MusionPCM, TaskDispatcher
 from .utils import *
 
 MODULE_PATH = os.path.dirname(__file__)
 
-class Separate(MusionBase):
+class Separate(TaskDispatcher):
+    def __init__(self, num_workers: int = 1) -> None:
+        super().__init__(_Separate(), num_workers)
+
+class _Separate(MusionBase):
     SOURCES = ["drums", "bass", "other", "vocals"]
 
     def __init__(self) -> None:
