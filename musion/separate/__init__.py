@@ -1,3 +1,3 @@
-from .inference import Separate
+from .inference import Separate, _Separate
 
-__all__ = [Separate]
+__all__ = [Separate, _Separate]

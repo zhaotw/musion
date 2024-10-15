@@ -16,10 +16,11 @@ class Struct(TaskDispatcher):
         super().__init__(_Struct(), num_workers)
 
 class _Struct(MusionBase):
-    def __init__(self) -> None:
+    def __init__(self, device: str = None) -> None:
         super().__init__(
             True,
-            os.path.join(MODULE_PATH, 'struct.onnx'))
+            os.path.join(MODULE_PATH, 'struct.onnx'),
+            device)
         self._feat = MelSpectrogram(**dataclasses.asdict(self._feat_cfg)).to(self.device)
 
     @property

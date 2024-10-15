@@ -18,10 +18,11 @@ class Separate(TaskDispatcher):
 class _Separate(MusionBase):
     SOURCES = ["drums", "bass", "other", "vocals"]
 
-    def __init__(self) -> None:
+    def __init__(self, device: str = None) -> None:
         super().__init__(
             False,
-            os.path.join(MODULE_PATH, 'separate.onnx'))
+            os.path.join(MODULE_PATH, 'separate.onnx'),
+            device)
         self._feat = Spectrogram(
                 n_fft=self._feat_cfg.n_fft,
                 hop_length=self._feat_cfg.hop_length,

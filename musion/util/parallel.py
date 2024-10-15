@@ -4,13 +4,28 @@ import threading
 import math
 from typing import Callable
 
-def parallel_worker(file, task_cls, **kwargs):
-    task_instance = task_cls()
+import torch
+
+def parallel_worker(file, task_cls, device, **kwargs):
+    task_instance = task_cls(device=device)
     task_instance(file, **kwargs)
 
 def parallel_process(num_workers: int, task_cls: Callable, file_list: list, **kwargs):
-    with Pool(num_workers) as pool:
-        pool.map(partial(parallel_worker, task_cls=task_cls, **kwargs), file_list)
+    if torch.cuda.device_count() > 1:
+        num_files_per_device = math.ceil(len(file_list) / torch.cuda.device_count())
+        pools = []
+        for i in range(torch.cuda.device_count()):
+            device = 'cuda:' + str(i)
+            p = Pool(num_workers)
+            p.map_async(partial(parallel_worker, task_cls=task_cls, device=device, **kwargs), 
+                         file_list[i * num_files_per_device:(i + 1) * num_files_per_device])
+            p.close()
+            pools.append(p)
+        for p in pools:
+            p.join()
+    else:
+        with Pool(num_workers) as pool:
+            pool.map(partial(parallel_worker, task_cls=task_cls, device=None, **kwargs), file_list)
 
 def concurrent_process(num_threads: int, fn: Callable, file_list: list, *fn_args):
     num_threads = min(num_threads, len(file_list))

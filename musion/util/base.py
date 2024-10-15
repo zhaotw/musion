@@ -46,7 +46,7 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
         self.__task = task
         self.__num_workers = num_workers
         self.__task_init_kwargs = task_init_kwargs
-        set_start_method('spawn')
+        set_start_method('spawn', force=True)
 
     def __call__(self, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
                  save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
@@ -78,10 +78,13 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
         return res
 
 class MusionBase(metaclass=abc.ABCMeta):
-    def __init__(self, need_mono_pcm: bool, model_path: str) -> None:
+    def __init__(self, need_mono_pcm: bool, model_path: str, device: Optional[str] = None) -> None:
         super().__init__()
         self.mono = need_mono_pcm
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if device is None:
+            self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        else:
+            self.device = device
 
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model file: {model_path} not found. Download it first following steps in README.")
@@ -90,8 +93,11 @@ class MusionBase(metaclass=abc.ABCMeta):
         ort_options.enable_cpu_mem_arena = False
         ort_options.enable_mem_pattern = False
         providers=[]
-        if self.device == 'cuda':
-            providers.append('CUDAExecutionProvider')
+        if 'cuda' in self.device:
+            device_id = 0
+            if 'cuda:' in self.device:
+                device_id = int(self.device.split(':')[1])
+            providers.append(('CUDAExecutionProvider', {'device_id': device_id}))
         providers.append('CPUExecutionProvider')
         self.__ort_session = ort.InferenceSession(model_path, sess_options=ort_options, providers=providers)
 

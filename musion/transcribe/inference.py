@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram, Resample
 
-from musion import Separate
+import musion
 from musion.util.base import MusionBase, FeatConfig, TaskDispatcher, MusionPCM
 from musion.util.tools import enframe, deframe
 from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
@@ -28,10 +28,11 @@ class Transcribe(TaskDispatcher):
 
 
 class _PianoTranscribe(MusionBase):
-    def __init__(self) -> None:
+    def __init__(self, device: str = None) -> None:
         super().__init__(
             True,
-            os.path.join(MODULE_PATH, 'transcribe_piano.onnx'))
+            os.path.join(MODULE_PATH, 'transcribe_piano.onnx'),
+            device)
         self._feat = MelSpectrogram(**dataclasses.asdict(self._feat_cfg)).to(self.device)
 
     @property
@@ -81,11 +82,12 @@ class _PianoTranscribe(MusionBase):
         return ['mid']
 
 class _VocalTranscribe(MusionBase):
-    def __init__(self) -> None:
+    def __init__(self, device: str = None) -> None:
         super().__init__(
             True,
-            os.path.join(MODULE_PATH, 'transcribe_vocal.onnx'))
-        self.separate = Separate()
+            os.path.join(MODULE_PATH, 'transcribe_vocal.onnx'),
+            device)
+        self.separate = musion.separate._Separate(device)
         self.resampler = Resample(self.separate._feat_cfg.sample_rate, self._feat_cfg.sample_rate).to(self.device)
 
     @property

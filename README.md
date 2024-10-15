@@ -6,7 +6,7 @@ A collection of MIR open-source tools, dedicated to efficient inference tasks.
 Designed to be lightweight with minimal package dependencies, ensuring easy installation and compatibility with various environments. This reduces the complexity of managing dependencies and helps avoid potential conflicts with other packages.
 
 ### Accelerated Multi-file Parallel Processing
-Significantly accelerating the analysis and processing of large datasets. By leveraging multi-threading and multi-processing techniques, MUSION can efficiently handle multiple files simultaneously, reducing the overall processing time.
+Significantly accelerating the analysis and processing of large datasets. By leveraging multi-threading and multi-processing techniques, and using CUDA for multi-GPU acceleration, MUSION can efficiently handle multiple files simultaneously, reducing the overall processing time.
 
 ### Unified and Concise UI
 Making it easy to use across different tools and applications. Whether you prefer using the Python interface, command-line interface (CLI), MUSION provides a consistent and intuitive experience for all users.
