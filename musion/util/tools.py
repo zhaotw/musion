@@ -5,7 +5,7 @@ import copy
 import numpy as np
 
 def get_file_list(dir_path):
-    return [os.path.join(dir_path, f) for f in os.listdir(dir_path)]
+    return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
 
 def get_file_name(file_path):
     """ /dir/test.wav -> test """

@@ -6,26 +6,28 @@ import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram
 
-from musion.util.base import MusionBase, FeatConfig, MusionPCM, TaskDispatcher
+from musion.util.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
 from musion.util.tools import normalize, median_filter
 
 MODULE_PATH = os.path.dirname(__file__)
 
 class Struct(TaskDispatcher):
-    def __init__(self, num_workers: int = 1) -> None:
-        super().__init__(_Struct(), num_workers)
+    def __init__(self) -> None:
+        super().__init__(_Struct)
 
-class _Struct(MusionBase):
+class _Struct(OrtMusionBase):
     def __init__(self, device: str = None) -> None:
         super().__init__(
-            True,
             os.path.join(MODULE_PATH, 'struct.onnx'),
             device)
-        self._feat = MelSpectrogram(**dataclasses.asdict(self._feat_cfg)).to(self.device)
+        mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
+        mel_spec_cfg.pop('mono')
+        self._feat = MelSpectrogram(**mel_spec_cfg).to(self.device)
 
     @property
     def _feat_cfg(self) -> FeatConfig:
         return FeatConfig(
+            mono=True,
             sample_rate=22050,
             n_fft=2048,
             hop_length=512,

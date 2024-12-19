@@ -1,31 +1,39 @@
-from multiprocessing import Pool
 from functools import partial
 import threading
 import math
 from typing import Callable
 
 import torch
+import torch.multiprocessing as mp
+from tqdm import tqdm
+
+from musion.util.dynamic_gpu_parallel import dynamic_gpu_parallel_infer
+from musion.util.tools import get_file_name
 
 def parallel_worker(file, task_cls, device, **kwargs):
     task_instance = task_cls(device=device)
-    task_instance(file, **kwargs)
+    res = task_instance(file, **kwargs)
+    return file, res
+
+def multiprocess_with_tqdm(func, iterable, num_workers=mp.cpu_count()):
+    res_dict = {}
+    with tqdm(total=len(iterable), unit="piece") as pbar:
+        with mp.Pool(num_workers) as p:
+            for file, res in p.imap_unordered(func, iterable):
+                pbar.update(1)
+                res_dict[get_file_name(file)] = res
+
+    return res_dict
 
 def parallel_process(num_workers: int, task_cls: Callable, file_list: list, **kwargs):
     if torch.cuda.device_count() > 1:
-        num_files_per_device = math.ceil(len(file_list) / torch.cuda.device_count())
-        pools = []
-        for i in range(torch.cuda.device_count()):
-            device = 'cuda:' + str(i)
-            p = Pool(num_workers)
-            p.map_async(partial(parallel_worker, task_cls=task_cls, device=device, **kwargs), 
-                         file_list[i * num_files_per_device:(i + 1) * num_files_per_device])
-            p.close()
-            pools.append(p)
-        for p in pools:
-            p.join()
+        return dynamic_gpu_parallel_infer(task_cls, file_list, num_workers, **kwargs)
     else:
-        with Pool(num_workers) as pool:
-            pool.map(partial(parallel_worker, task_cls=task_cls, device=None, **kwargs), file_list)
+        return multiprocess_with_tqdm(
+            partial(parallel_worker, task_cls=task_cls, device=None, **kwargs),
+            file_list,
+            num_workers
+        )
 
 def concurrent_process(num_threads: int, fn: Callable, file_list: list, *fn_args):
     num_threads = min(num_threads, len(file_list))

@@ -1,11 +1,11 @@
 import os
 from typing import Optional
-
+import dataclasses
 import torch
 from torchaudio.transforms import MelSpectrogram
 
 from musion.separate.utils import *
-from musion.util.base import FeatConfig, MusionBase, MusionPCM, TaskDispatcher
+from musion.util.base import FeatConfig, OrtMusionBase, MusionPCM, TaskDispatcher
 from musion.beat.postprocessor import Postprocessor
 from musion.beat.utils import *
 
@@ -13,21 +13,22 @@ from musion.beat.utils import *
 MODULE_PATH = os.path.dirname(__file__)
 
 class Beat(TaskDispatcher):
-    def __init__(self, num_workers: int = 1, meter_change_detection: bool = False):
-        super().__init__(_Beat(meter_change_detection=meter_change_detection), num_workers, meter_change_detection=meter_change_detection)
+    def __init__(self, meter_change_detection: bool = False):
+        super().__init__(_Beat, meter_change_detection=meter_change_detection)
 
-class _Beat(MusionBase):
+class _Beat(OrtMusionBase):
     def __init__(self, device: str = None, meter_change_detection: bool = False) -> None:
-        super().__init__(True, 
-                         os.path.join(MODULE_PATH, 'beat.onnx'),
+        super().__init__(os.path.join(MODULE_PATH, 'beat.onnx'),
                          device)
-
-        self._feat = MelSpectrogram(**self._feat_cfg.__dict__).to(self.device)
+        mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
+        mel_spec_cfg.pop('mono')
+        self._feat = MelSpectrogram(**mel_spec_cfg).to(self.device)
         self.postprocessor = Postprocessor('minimal' if meter_change_detection else 'dbn')
 
     @property
     def _feat_cfg(self) -> FeatConfig:
         return FeatConfig(
+            mono=True,
             sample_rate=22050,
             n_fft=1024,
             hop_length=441,

@@ -7,37 +7,35 @@ import torch
 from torchaudio.transforms import MelSpectrogram, Resample
 
 import musion
-from musion.util.base import MusionBase, FeatConfig, TaskDispatcher, MusionPCM
+from musion.util.base import OrtMusionBase, FeatConfig, TaskDispatcher, MusionPCM
 from musion.util.tools import enframe, deframe
 from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
 
 MODULE_PATH = os.path.dirname(__file__)
 
 class Transcribe(TaskDispatcher): 
-    def __init__(self, target_instrument: str, num_workers: int = 1):
-        super().__init__(self.__create(target_instrument), num_workers)
-
-    @staticmethod
-    def __create(target_instrument: str):
+    def __init__(self, target_instrument: str):
         if target_instrument == 'piano':
-            return _PianoTranscribe()
+            task_class = _PianoTranscribe
         elif target_instrument == 'vocal':
-            return _VocalTranscribe()
+            task_class = _VocalTranscribe
         else:
             raise ValueError(f"Unsupported instrument: {target_instrument}")
+        super().__init__(task_class)
 
-
-class _PianoTranscribe(MusionBase):
+class _PianoTranscribe(OrtMusionBase):
     def __init__(self, device: str = None) -> None:
         super().__init__(
-            True,
             os.path.join(MODULE_PATH, 'transcribe_piano.onnx'),
             device)
-        self._feat = MelSpectrogram(**dataclasses.asdict(self._feat_cfg)).to(self.device)
+        mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
+        mel_spec_cfg.pop('mono')
+        self._feat = MelSpectrogram(**mel_spec_cfg).to(self.device)
 
     @property
     def _feat_cfg(self) -> FeatConfig:
         return FeatConfig(
+            mono=True,
             sample_rate=16000,
             n_fft=2048,
             hop_length=160,
@@ -81,10 +79,9 @@ class _PianoTranscribe(MusionBase):
     def result_keys(self):
         return ['mid']
 
-class _VocalTranscribe(MusionBase):
+class _VocalTranscribe(OrtMusionBase):
     def __init__(self, device: str = None) -> None:
         super().__init__(
-            True,
             os.path.join(MODULE_PATH, 'transcribe_vocal.onnx'),
             device)
         self.separate = musion.separate._Separate(device)
@@ -93,6 +90,7 @@ class _VocalTranscribe(MusionBase):
     @property
     def _feat_cfg(self) -> FeatConfig:
         return FeatConfig(
+            mono=True,
             sample_rate=16000,
             n_fft=None,
             hop_length=None

@@ -5,13 +5,14 @@ import logging
 import abc
 import time
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing import cpu_count, set_start_method
+from multiprocessing import cpu_count
 
 import numpy as np
 import librosa
 import torchaudio
 import torch
 import onnxruntime as ort
+from tqdm import tqdm
 
 from musion.util.tools import *
 from musion.util.parallel import *
@@ -30,9 +31,10 @@ class SaveConfig:
 
 @dataclasses.dataclass
 class FeatConfig:
+    mono: bool
     sample_rate: int
-    n_fft: int
-    hop_length: int
+    n_fft: Optional[int] = None
+    hop_length: Optional[int] = None
     f_min: Optional[float] = None
     f_max: Optional[float] = None
     n_mels: Optional[int] = None
@@ -41,33 +43,52 @@ class FeatConfig:
     norm: Optional[str] = None
     mel_scale: Optional[str] = 'htk'
 
+    @property
+    def fps(self):  # frames per second
+        return self.sample_rate / self.hop_length
+
 class TaskDispatcher(metaclass=abc.ABCMeta):
-    def __init__(self, task: "MusionBase", num_workers: int = 1, **task_init_kwargs) -> None:
-        self.__task = task
-        self.__num_workers = num_workers
-        self.__task_init_kwargs = task_init_kwargs
-        set_start_method('spawn', force=True)
+    def __init__(self, musion_class, **init_kwargs) -> None:
+        self.__task_class = musion_class
+        self.__init_kwargs = init_kwargs
+        self.__task = None
+        
+    @property
+    def result_keys(self) -> List[str]:
+        return self.__task.result_keys
+
+    def get_task(self):
+        if self.__task is None:
+            self.__task = self.__task_class(**self.__init_kwargs)
+        return self.__task
 
     def __call__(self, audio_path: Optional[Union[List[str], str]] = None, pcm: Optional[MusionPCM] = None,
-                 save_cfg: Optional[SaveConfig] = None, num_threads: int = 0, overwrite: bool = False, **kwargs: Any) -> dict:
+                 save_cfg: Optional[SaveConfig] = None, overwrite: bool = False, 
+                 num_workers: int = 0, num_threads: int = 0, **kwargs: Any) -> dict:
+        """
+        num_workers: number of workers for parallel processing
+        num_threads: number of threads for concurrent processing
+        """
         if isinstance(audio_path, List):
-            res = self.__process_multi_file(audio_path, num_threads, save_cfg=save_cfg, overwrite=overwrite)
+            res = self.__process_multi_file(audio_path, num_workers, num_threads, save_cfg=save_cfg, overwrite=overwrite)
         elif isinstance(audio_path, str) and os.path.isdir(audio_path):
-            res = self.__process_multi_file(get_file_list(audio_path), num_threads, save_cfg=save_cfg, overwrite=overwrite)
+            res = self.__process_multi_file(get_file_list(audio_path), num_workers, num_threads, save_cfg=save_cfg, overwrite=overwrite)
         else:
-            res = self.__task(audio_path, pcm, save_cfg, overwrite)
+            res = self.get_task()(audio_path, pcm, save_cfg, overwrite)
 
         return res
 
-    def __process_multi_file(self, file_list: list, num_threads: int, **kwargs) -> dict:
+    def __process_multi_file(self, file_list: list, num_workers: int, num_threads: int, **call_kwargs) -> dict:
         res = {}
 
-        if self.__num_workers > 1:
-            parallel_process(self.__num_workers, self.__task.__class__, file_list, **kwargs)
+        if num_workers > 0:
+            kwargs = {'init_kwargs': self.__init_kwargs, 'call_kwargs': call_kwargs}
+            res = parallel_process(num_workers, self.__task_class, file_list, **kwargs)
         else:
             def serial_process(file_list, res):
-                for audio_path in file_list:
-                    cur_res = self.__task(audio_path, **kwargs)
+                task = self.get_task()
+                for audio_path in tqdm(file_list, desc=f"Processing..."):
+                    cur_res = task(audio_path, **call_kwargs)
                     res[get_file_name(audio_path)] = cur_res
 
             if num_threads == 0:
@@ -78,28 +99,11 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
         return res
 
 class MusionBase(metaclass=abc.ABCMeta):
-    def __init__(self, need_mono_pcm: bool, model_path: str, device: Optional[str] = None) -> None:
-        super().__init__()
-        self.mono = need_mono_pcm
+    def __init__(self, device: Optional[str] = None) -> None:
         if device is None:
             self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
             self.device = device
-
-        if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model file: {model_path} not found. Download it first following steps in README.")
-
-        ort_options = ort.SessionOptions()
-        ort_options.enable_cpu_mem_arena = False
-        ort_options.enable_mem_pattern = False
-        providers=[]
-        if 'cuda' in self.device:
-            device_id = 0
-            if 'cuda:' in self.device:
-                device_id = int(self.device.split(':')[1])
-            providers.append(('CUDAExecutionProvider', {'device_id': device_id}))
-        providers.append('CPUExecutionProvider')
-        self.__ort_session = ort.InferenceSession(model_path, sess_options=ort_options, providers=providers)
 
         num_threads = max(cpu_count() // 2, 1)
         self.__batch_predict_pool = ThreadPoolExecutor(num_threads)
@@ -138,15 +142,9 @@ class MusionBase(metaclass=abc.ABCMeta):
         if pcm.samples.ndim == 1:
             pcm.samples = np.expand_dims(pcm.samples, 0)
 
-        pcm.samples = convert_audio_channels(pcm.samples, 1 if self.mono else 2)
+        pcm.samples = convert_audio_channels(pcm.samples, 1 if self._feat_cfg.mono else 2)
 
         return pcm
-
-    def _predict(self, model_input: Union[List[np.ndarray], np.ndarray]):
-        if isinstance(model_input, np.ndarray):
-            model_input = [model_input]
-        ort_input = {i.name: d.astype(np.float32) for i, d in zip(self.__ort_session.get_inputs(), model_input)}
-        return self.__ort_session.run(None, input_feed=ort_input)
 
     def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
         futures = []
@@ -159,8 +157,15 @@ class MusionBase(metaclass=abc.ABCMeta):
 
         return res
 
-    def __call__(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None,
-                save_cfg: Optional[SaveConfig] = None, overwrite: bool = False) -> dict:
+    def __call__(self,
+                 audio_path: Optional[str] = None, 
+                 pcm: Optional[MusionPCM] = None,
+                 save_cfg: Optional[SaveConfig] = None, 
+                 overwrite: bool = False) -> dict:
+        """
+        core function for processing ONE audio file
+        overwrite: whether to overwrite the existing result file, only works when save_cfg is provided.
+        """
         if save_cfg and not save_cfg.keys:
             save_cfg.keys = self.result_keys
 
@@ -200,3 +205,28 @@ class MusionBase(metaclass=abc.ABCMeta):
                 res[key].save(save_path)
             else:
                 np.savetxt(save_path, res[key], fmt='%s')
+
+class OrtMusionBase(MusionBase):
+    def __init__(self, model_path: str, device: Optional[str] = None) -> None:
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Model file: {model_path} not found. Download it first following steps in README.")
+
+        super().__init__(device)
+
+        ort_options = ort.SessionOptions()
+        ort_options.enable_cpu_mem_arena = False
+        ort_options.enable_mem_pattern = False
+        providers=[]
+        if 'cuda' in self.device:
+            device_id = 0
+            if 'cuda:' in self.device:
+                device_id = int(self.device.split(':')[1])
+            providers.append(('CUDAExecutionProvider', {'device_id': device_id}))
+        providers.append('CPUExecutionProvider')
+        self.__ort_session = ort.InferenceSession(model_path, sess_options=ort_options, providers=providers)
+
+    def _predict(self, model_input: Union[List[np.ndarray], np.ndarray]):
+        if isinstance(model_input, np.ndarray):
+            model_input = [model_input]
+        ort_input = {i.name: d.astype(np.float32) for i, d in zip(self.__ort_session.get_inputs(), model_input)}
+        return self.__ort_session.run(None, input_feed=ort_input)

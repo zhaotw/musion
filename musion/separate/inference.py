@@ -6,21 +6,20 @@ import torch
 from torchaudio.transforms import Spectrogram
 from torch.nn import functional as F
 
-from musion.util.base import MusionBase, FeatConfig, MusionPCM, TaskDispatcher
+from musion.util.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
 from .utils import *
 
 MODULE_PATH = os.path.dirname(__file__)
 
 class Separate(TaskDispatcher):
-    def __init__(self, num_workers: int = 1) -> None:
-        super().__init__(_Separate(), num_workers)
+    def __init__(self) -> None:
+        super().__init__(_Separate)
 
-class _Separate(MusionBase):
+class _Separate(OrtMusionBase):
     SOURCES = ["drums", "bass", "other", "vocals"]
 
     def __init__(self, device: str = None) -> None:
         super().__init__(
-            False,
             os.path.join(MODULE_PATH, 'separate.onnx'),
             device)
         self._feat = Spectrogram(
@@ -35,6 +34,7 @@ class _Separate(MusionBase):
     @property
     def _feat_cfg(self) -> FeatConfig:
         return FeatConfig(
+            mono=False,
             sample_rate=44100,
             n_fft=4096,
             hop_length=1024,
@@ -110,7 +110,6 @@ class _Separate(MusionBase):
         x = ispectro(z, hl, length=le)
         x = x[..., pad: pad + length]
         return x
-
 
     def _process_segment(self, mix_np):
         mix = torch.as_tensor(mix_np).to(self.device)

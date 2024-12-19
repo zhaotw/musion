@@ -74,9 +74,7 @@ class TensorChunk:
     def __init__(self, tensor, offset, length):
         total_length = tensor.shape[-1]
 
-
         length = min(total_length - offset, length)
-
 
         self.tensor = tensor
         self.offset = offset

@@ -23,7 +23,7 @@ Separate songs into "drums", "bass", "other", "vocals"
 Detect chorus part for pop songs
 
 [transcribe](musion/transcribe/README.md) automatic music transcription  
-Support for piano or vocal transcription now
+Transcribe piano or vocal audio to onset, offset, and pitch, or even MIDI file.
 
 ## Installation
 1. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
