@@ -19,7 +19,7 @@ from tqdm import tqdm
 from musion.utils.tools import *
 from musion.utils.parallel import *
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 
 @dataclasses.dataclass
 class MusionPCM:
@@ -131,18 +131,15 @@ class MusionBase(metaclass=abc.ABCMeta):
         if audio_path and pcm:
             logging.warning('Both audio path and pcm provided, will use audio path.')
         if audio_path:
-            # samples, sr = librosa.load(audio_path, sr=None, mono=self._feat_cfg.mono)
-            samples, sr = torchaudio.load(audio_path)
+            samples, sr = librosa.load(audio_path, sr=None, mono=self._feat_cfg.mono)
             pcm = MusionPCM(samples, sr)
 
         if pcm.sample_rate != self._feat_cfg.sample_rate:
             pcm.samples = torchaudio.transforms.Resample(pcm.sample_rate, self._feat_cfg.sample_rate)(
-                # torch.from_numpy(pcm.samples))
-                pcm.samples)
-            pcm.samples = pcm.samples.numpy()
+                torch.from_numpy(pcm.samples))
             pcm.sample_rate = self._feat_cfg.sample_rate
 
-        # pcm.samples = np.asarray(pcm.samples)
+        pcm.samples = np.asarray(pcm.samples)
 
         if pcm.samples.ndim == 1:
             pcm.samples = np.expand_dims(pcm.samples, 0)
@@ -200,7 +197,7 @@ class MusionBase(metaclass=abc.ABCMeta):
             if key not in self.result_keys:
                 raise KeyError(f'Save key error! There is no {key} for task {self.__class__.__name__}.')
             if res[key] is None:
-                logging.warning(f'Result for key: {key} is None, will not save a file for it.')
+                logging.warning(f'Result for key: {key} of {audio_name} is None, will not save a file for it.')
                 continue
 
             save_path = os.path.join(save_cfg.dir_path, audio_name + '.' + key)
