@@ -6,7 +6,7 @@ import torch
 from torchaudio.transforms import Spectrogram
 from torch.nn import functional as F
 
-from musion.util.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
 from .utils import *
 
 MODULE_PATH = os.path.dirname(__file__)

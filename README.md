@@ -62,8 +62,8 @@ struct.result_keys
 # Save the result by passing save_cfg, to the file: dir/to/save/in/audio.strcut
 struct(audio_path='dir/audio.wav', save_cfg=save_cfg)
 
-# Enable parallel processing when input contains multiple files, just set a proper number for num_threads
-struct(audio_path='dir/', num_threads=5)
+# Enable parallel processing when input contains multiple files, just set a proper number for num_workers
+struct(audio_path='dir/', num_workers=5)
 # Overwrite the existing result
 struct(audio_path='dir/', overwrite=True)
 ```

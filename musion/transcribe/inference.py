@@ -7,8 +7,8 @@ import torch
 from torchaudio.transforms import MelSpectrogram, Resample
 
 import musion
-from musion.util.base import OrtMusionBase, FeatConfig, TaskDispatcher, MusionPCM
-from musion.util.tools import enframe, deframe
+from musion.utils.base import OrtMusionBase, FeatConfig, TaskDispatcher, MusionPCM
+from musion.utils.tools import enframe, deframe
 from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
 
 MODULE_PATH = os.path.dirname(__file__)

@@ -7,8 +7,8 @@ import torch
 import torch.multiprocessing as mp
 from tqdm import tqdm
 
-from musion.util.dynamic_gpu_parallel import dynamic_gpu_parallel_infer
-from musion.util.tools import get_file_name
+from musion.utils.dynamic_gpu_parallel import dynamic_gpu_parallel_infer
+from musion.utils.tools import get_file_name
 
 def parallel_worker(file, task_cls, device, **kwargs):
     task_instance = task_cls(device=device)

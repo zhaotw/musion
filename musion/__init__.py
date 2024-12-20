@@ -1,4 +1,4 @@
-from .util import MusionPCM, SaveConfig, MusionBase
+from .utils import MusionPCM, SaveConfig, MusionBase
 
 from .separate import Separate
 from .transcribe import Transcribe

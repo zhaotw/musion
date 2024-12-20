@@ -6,6 +6,8 @@ import abc
 import time
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning)
 
 import numpy as np
 import librosa
@@ -14,10 +16,10 @@ import torch
 import onnxruntime as ort
 from tqdm import tqdm
 
-from musion.util.tools import *
-from musion.util.parallel import *
+from musion.utils.tools import *
+from musion.utils.parallel import *
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 @dataclasses.dataclass
 class MusionPCM:
@@ -55,7 +57,7 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
         
     @property
     def result_keys(self) -> List[str]:
-        return self.__task.result_keys
+        return self.get_task().result_keys
 
     def get_task(self):
         if self.__task is None:
@@ -129,15 +131,18 @@ class MusionBase(metaclass=abc.ABCMeta):
         if audio_path and pcm:
             logging.warning('Both audio path and pcm provided, will use audio path.')
         if audio_path:
-            samples, sr = librosa.load(audio_path, sr=None, mono=self.mono)
+            # samples, sr = librosa.load(audio_path, sr=None, mono=self._feat_cfg.mono)
+            samples, sr = torchaudio.load(audio_path)
             pcm = MusionPCM(samples, sr)
 
         if pcm.sample_rate != self._feat_cfg.sample_rate:
             pcm.samples = torchaudio.transforms.Resample(pcm.sample_rate, self._feat_cfg.sample_rate)(
-                torch.from_numpy(pcm.samples))
+                # torch.from_numpy(pcm.samples))
+                pcm.samples)
+            pcm.samples = pcm.samples.numpy()
             pcm.sample_rate = self._feat_cfg.sample_rate
 
-        pcm.samples = np.asarray(pcm.samples)
+        # pcm.samples = np.asarray(pcm.samples)
 
         if pcm.samples.ndim == 1:
             pcm.samples = np.expand_dims(pcm.samples, 0)

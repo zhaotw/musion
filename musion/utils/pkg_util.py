@@ -5,7 +5,7 @@ import os
 import musion
 
 task_names = [module.name for module in pkgutil.iter_modules(musion.__path__)]
-task_names.remove('util')
+task_names.remove('utils')
 
 def get_task_instance(task_name: str, **init_kwargs) -> musion.MusionBase:
     musion_pkg = importlib.import_module('musion.' + task_name)

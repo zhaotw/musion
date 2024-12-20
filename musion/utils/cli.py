@@ -2,7 +2,7 @@ import argparse
 import logging
 
 import musion
-from musion.util.pkg_util import task_names, get_task_instance
+from musion.utils.pkg_util import task_names, get_task_instance
 
 def main():
     parser = argparse.ArgumentParser(description="""
