@@ -14,22 +14,18 @@ def get_queue(song_list, split):
 
 def progress_monitor(total_items, process_state):
     processed_count = 0
-    completed_processes = 0
-    num_processes = process_state["progress_dict"]["num_processes"]
+
+    update_event = process_state["update_event"]
 
     with tqdm(total=total_items, desc="Processing items", disable=False) as progress_bar:
-        while completed_processes < num_processes:
-            # process_state["update_event"].wait()  # 等待更新事件
-            processed_now = process_state["progress_dict"]["processed"]
+        while processed_count < total_items:
+            update_event.wait()  # 等待更新事件
+            processed_now = process_state["processed"].value
             progress_update = processed_now - processed_count
             if progress_update > 0:
                 progress_bar.update(progress_update)
                 processed_count = processed_now
-            process_state["update_event"].clear()  # reset update event, for next update
-
-            if process_state["complete_event"].is_set():
-                completed_processes += 1
-                process_state["complete_event"].clear()  # reset complete event, for next check
+            update_event.clear()  # reset update event, for next update
 
 def gpu_worker(
     task_name, gpu_id: int, file_queue: Queue, process_state,
@@ -44,17 +40,37 @@ def gpu_worker(
             musion_task(
                 audio_path=audio_path,
                 **musion_kwargs['call_kwargs']
-            )
+        )
+        except PermissionError as e:
+            print(f"PermissionError: {e}")
+            exit()
         except Exception as e:
             logging.debug(f"Error processing {audio_path}: {e}")
             torch.cuda.empty_cache()
-        finally:
-            with process_state["lock"]:
-                process_state["progress_dict"]["processed"] += 1
-                process_state["update_event"].set()  # trigger update progress bar
-    process_state["complete_event"].set()
 
-def dynamic_gpu_parallel_infer(mia_module, audio_list, num_processes_per_gpu=1, **kwargs):
+        with process_state["lock"]:
+            process_state["processed"].value += 1
+            process_state["update_event"].set()  # trigger update progress bar
+
+def create_workers_on_one_node(musion_module, file_queue, process_state, num_processes_per_gpu=1, **kwargs):
+    available_gpus = list(range(torch.cuda.device_count()))
+    logging.info(f"Available GPUs: {available_gpus}")
+    processes = []
+
+    for i in available_gpus:
+        for j in range(num_processes_per_gpu):
+            p = Process(
+                name=f"worker GPU-{i}-{j}",
+                target=gpu_worker,
+                args=(musion_module, i, file_queue, process_state),
+                kwargs=kwargs,
+            )
+            p.start()
+            processes.append(p)
+    for p in processes:
+        p.join()
+
+def dynamic_gpu_parallel_infer(musion_module, audio_list, num_processes_per_gpu=1, **kwargs):
     """
     Dynamic GPU task allocation, file-level parallel inference, which can alleviate the problem of unbalanced GPU load.
     Also monitor the global processing progress.
@@ -63,35 +79,15 @@ def dynamic_gpu_parallel_infer(mia_module, audio_list, num_processes_per_gpu=1, 
     file_queue = get_queue(audio_list, 1)
 
     process_state = {
-        "progress_dict": Manager().dict(),
-        "update_event": Event(),
-        "complete_event": Event(),
         "lock": Lock(),
+        "update_event": Event(),
+        "processed": Manager().Value('i', 0),
     }
-    progress_dict = process_state["progress_dict"]
-    progress_dict["processed"] = 0
-
-    available_gpus = list(range(torch.cuda.device_count()))
-    logging.info(f"Available GPUs: {available_gpus}")
-    progress_dict["num_processes"] = len(available_gpus) * num_processes_per_gpu
-
-    processes = []
-    for i in available_gpus:
-        for j in range(num_processes_per_gpu):
-            p = Process(
-                name=f"worker GPU-{i}-{j}",
-                target=gpu_worker,
-                args=(mia_module, i, file_queue, process_state),
-                kwargs=kwargs,
-            )
-            p.start()
-            processes.append(p)
 
     monitor = Process(target=progress_monitor, args=(len(audio_list), process_state),
                       name="progress monitor")
     monitor.start()
 
-    for p in processes:
-        p.join()
+    create_workers_on_one_node(musion_module, file_queue, process_state, num_processes_per_gpu, **kwargs)
 
     monitor.join()
