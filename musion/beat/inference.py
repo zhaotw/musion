@@ -5,7 +5,8 @@ import torch
 from torchaudio.transforms import MelSpectrogram
 
 from musion.separate.utils import *
-from musion.utils.base import FeatConfig, OrtMusionBase, MusionPCM, TaskDispatcher
+from musion.utils.base import FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.ort_musion_base import OrtMusionBase
 from musion.beat.postprocessor import Postprocessor
 from musion.beat.utils import *
 

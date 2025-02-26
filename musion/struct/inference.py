@@ -6,7 +6,8 @@ import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram
 
-from musion.utils.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.base import FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.ort_musion_base import OrtMusionBase
 from musion.utils.tools import normalize, median_filter
 
 MODULE_PATH = os.path.dirname(__file__)

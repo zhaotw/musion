@@ -7,7 +7,8 @@ import torch
 from torchaudio.transforms import MelSpectrogram, Resample
 
 import musion
-from musion.utils.base import OrtMusionBase, FeatConfig, TaskDispatcher, MusionPCM
+from musion.utils.base import FeatConfig, TaskDispatcher, MusionPCM
+from musion.utils.ort_musion_base import OrtMusionBase
 from musion.utils.tools import enframe, deframe
 from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
 
@@ -78,6 +79,10 @@ class _PianoTranscribe(OrtMusionBase):
     @property
     def result_keys(self):
         return ['mid']
+    
+    def _save(self, key, save_path, res):
+        if 'mid' in key:
+            res[key].save(save_path)
 
 class _VocalTranscribe(OrtMusionBase):
     def __init__(self, device: str = None) -> None:

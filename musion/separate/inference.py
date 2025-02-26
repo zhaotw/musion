@@ -5,8 +5,10 @@ from typing import Optional
 import torch
 from torchaudio.transforms import Spectrogram
 from torch.nn import functional as F
+import torchaudio
 
-from musion.utils.base import OrtMusionBase, FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.base import FeatConfig, MusionPCM, TaskDispatcher
+from musion.utils.ort_musion_base import OrtMusionBase
 from .utils import *
 
 MODULE_PATH = os.path.dirname(__file__)
@@ -144,3 +146,7 @@ class _Separate(OrtMusionBase):
     @property
     def result_keys(self):
         return [s + '.wav' for s in self.SOURCES]
+
+    def _save(self, key, save_path, res):
+        if '.wav' in key:
+            torchaudio.save(save_path, res[key], self._feat_cfg.sample_rate, encoding="PCM_S", bits_per_sample=16)
