@@ -67,6 +67,11 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
         num_workers: number of workers for parallel processing
         num_threads: number of threads for concurrent processing
         """
+
+        if 'audio_path' in kwargs:  # for backward compatibility
+            path_input = kwargs['audio_path']
+            del kwargs['audio_path']
+
         if isinstance(path_input, List):
             res = self.__process_multi_file(path_input, num_workers, num_threads, **kwargs)
         elif isinstance(path_input, str) and os.path.isdir(path_input):
