@@ -26,12 +26,12 @@ Detect chorus part for pop songs
 Transcribe piano or vocal audio to onset, offset, and pitch, or even MIDI file.
 
 ## Installation
-1. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
-2. Install locally.
+1. Using PyPI
 ```shell
-pip install .
+python -m pip install musion
 ```
-3. Support cuda acceleration. Install it if you would like optimal runtime performance.
+2. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
+
 
 ## Example Usage
 All the tools use the same procedure and method, only different at tool name.  
@@ -70,7 +70,7 @@ struct(audio_path='dir/', overwrite=True)
 ## Command-Line Interface
 Almost the same parameters as above. Type '$ musion -h' for more details. Here's a comprehensive example.
 ```shell
-$ musion separate test_wavs/ --save_dir results_dir/ --save_keys vocals.wav bass.wav --num_threads 5
+$ musion separate test_wavs/ --save_dir results_dir/ --save_keys vocals.wav bass.wav --num_workers 5
 ```
 
 ## Contributing

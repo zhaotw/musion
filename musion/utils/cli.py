@@ -6,13 +6,13 @@ from musion.utils.pkg_util import task_names, get_task_instance
 
 def main():
     parser = argparse.ArgumentParser(description="""
-    MUSION
+    MUSION, a toolbox for music information retrieval and music signal processing.
     """)
 
     parser.add_argument('task', type=str, choices=task_names, help='Choose the task you would like to perform.')
     parser.add_argument('audio_path', type=str, nargs='+', 
                         help='Absolute file path to perform the task. Could be any number of files or a directory.')
-    parser.add_argument('--num_threads', type=int, default=0,
+    parser.add_argument('--num_workers', type=int, default=0,
                         help='Set to a proper number to enable parallel processing.')
     parser.add_argument('--print_result', action='store_true', help='Whether to print the task result(s)')
     parser.add_argument('--show_keys', action='store_true', help='Print the result keys for the specific task.')
