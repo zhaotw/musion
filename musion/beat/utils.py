@@ -35,6 +35,11 @@ def split_piece(
     starts = np.arange(
         -border_size, len(spect) - border_size, chunk_size - 2 * border_size
     )
+    if len(spect) <= chunk_size - 2 * border_size:
+        starts = np.array([-border_size])
+        chunks = [zeropad(spect, left=border_size, right=chunk_size - len(spect) - border_size)]
+        return chunks, starts
+
     if avoid_short_end and len(spect) > chunk_size - 2 * border_size:
         # if we avoid short ends, move the last index to the end of the piece - (chunk_size - border_size)
         starts[-1] = len(spect) - (chunk_size - border_size)
@@ -89,13 +94,14 @@ def aggregate_prediction(
         # process in reverse order, so predictions of earlier excerpts overwrite later ones
         pred_chunks = reversed(list(pred_chunks))
         starts = reversed(list(starts))
+    valid_size = min(full_size, chunk_size - 2 * border_size)
     for start, pchunk in zip(starts, pred_chunks):
         piece_prediction_beat[
             start + border_size : start + chunk_size - border_size
-        ] = pchunk["beat"]
+        ] = pchunk["beat"][:valid_size]
         piece_prediction_downbeat[
             start + border_size : start + chunk_size - border_size
-        ] = pchunk["downbeat"]
+        ] = pchunk["downbeat"][:valid_size]
     return piece_prediction_beat, piece_prediction_downbeat
 
 def convert_to_std_result(beats: np.ndarray, downbeats: np.ndarray) -> None:

@@ -7,5 +7,5 @@ Input:
 
 Return:  
 {  
-    'beats':  [ [time, beat number] x n ]
+    'beats':  [ [time, beat number] x n ]  
 }
