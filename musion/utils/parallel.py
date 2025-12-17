@@ -8,9 +8,9 @@ import torch
 import torch.multiprocessing as mp
 from tqdm import tqdm
 
-from musion.utils.dynamic_gpu_parallel import dynamic_gpu_parallel_infer
+from musion.utils.dynamic_gpu_parallel import dynamic_gpu_parallel_infer, DIST_INFO
 from musion.utils.tools import get_file_name
-from musion.utils.distributed import distributed_infer, DIST_INFO
+from musion.utils.distributed import distributed_infer
 
 def parallel_worker(file, task_cls, **kwargs):
     task_instance = task_cls(**kwargs['init_kwargs'])
@@ -31,11 +31,10 @@ def multiprocess_with_tqdm(func, iterable, num_workers=mp.cpu_count()//2, return
     return res_dict if return_dict else None
 
 def parallel_process(num_workers: int, task_cls: Callable, file_list: list, **kwargs):
-    device = kwargs['init_kwargs'].get('device', None)
-
     if DIST_INFO['world_size'] > 1:
         return distributed_infer(task_cls, file_list, num_workers, **kwargs)
 
+    device = kwargs['init_kwargs'].get('device', None)
     if torch.cuda.device_count() > 1 and \
         (not device or 'cuda' in device):
         return dynamic_gpu_parallel_infer(task_cls, file_list, num_workers, **kwargs)

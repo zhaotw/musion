@@ -1,8 +1,8 @@
 import os
-
 import copy
 
 import numpy as np
+import torch
 
 def get_file_list(dir_path):
     return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
@@ -14,7 +14,7 @@ def get_file_name(file_path):
 def check_exist(audio_path, save_cfg):
     audio_name = get_file_name(audio_path)
     for key in save_cfg.keys:
-        tgt_path = os.path.join(save_cfg.dir_path, f"{audio_name}.{key}")
+        tgt_path = os.path.join(save_cfg.real_dir_path(audio_path), f"{audio_name}.{key}")
         if not os.path.exists(tgt_path):
             return False
 
@@ -109,7 +109,7 @@ def deframe(x):
 
         return y
 
-def convert_audio_channels(wav: np.ndarray, channels: int):
+def convert_audio_channels(wav: torch.Tensor, channels: int):
     """Convert audio to the given number of channels."""
     src_channels = wav.shape[-2]
     if src_channels == channels:
@@ -118,12 +118,16 @@ def convert_audio_channels(wav: np.ndarray, channels: int):
         # Case 1:
         # The caller asked 1-channel audio, but the stream have multiple
         # channels, downmix all channels.
-        wav = wav.mean(-2, keepdims=True)
+        if torch.allclose(torch.abs(wav[0]), torch.abs(wav[1])):
+            # to avoid case: channel 0 is inverse of channel 1
+            wav = wav[0]
+        else:
+            wav = wav.mean(-2, keepdims=True)
     elif src_channels == 1:
         # Case 2:
         # The caller asked for multiple channels, but the input file have
         # one single channel, replicate the audio over all channels.
-        wav = np.tile(wav, (channels, 1))
+        wav = torch.tile(wav, (channels, 1))
     elif src_channels >= channels:
         # Case 3:
         # The caller asked for multiple channels, and the input file have

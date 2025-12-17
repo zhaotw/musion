@@ -49,7 +49,9 @@ def main():
     if len(args_dict['audio_path']) == 1:
         args_dict['audio_path'] = args_dict['audio_path'][0]
 
-    res = musion_task(**args_dict)
+    call_args = {'audio_path': args_dict['audio_path'], 'save_cfg': args_dict['save_cfg'], 'overwrite': args.overwrite,
+                'num_workers': args.num_workers}
+    res = musion_task(**call_args)
 
     if args.print_result:
         print(res)

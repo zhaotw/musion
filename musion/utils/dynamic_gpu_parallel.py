@@ -1,8 +1,25 @@
 import logging
+import os
+import socket
+import traceback
 
 import torch
 from torch.multiprocessing import Event, Manager, Lock, Process, Queue
 from tqdm import tqdm
+
+master_addr = os.getenv('MASTER_ADDR', 'localhost')
+try:
+    master_addr = socket.gethostbyname(master_addr)
+except socket.gaierror:
+    logging.warning(f"Failed to resolve hostname {master_addr}, using localhost instead.")
+    master_addr = 'localhost'
+
+DIST_INFO = {
+    'master_addr': master_addr,
+    'master_port': int(os.getenv('MASTER_PORT', 4516)),
+    'world_size': int(os.getenv('WORLD_SIZE', 1)),
+    'rank': int(os.getenv('RANK', 0))
+}
 
 
 def get_queue(song_list, split):
@@ -19,7 +36,9 @@ def progress_monitor(total_items, process_state):
 
     with tqdm(total=total_items, desc="Processing items", disable=False) as progress_bar:
         while processed_count < total_items:
-            update_event.wait()  # 等待更新事件
+            if not update_event.wait(timeout=1000):
+                logging.warning(f"Monitor process timeout")
+                return
             processed_now = process_state["processed"].value
             progress_update = processed_now - processed_count
             if progress_update > 0:
@@ -33,20 +52,35 @@ def gpu_worker(
 ):
     musion_task = task_name(device=f"cuda:{gpu_id}", **musion_kwargs['init_kwargs'])
 
-    while not file_queue.empty():
-        audio_path = file_queue.get()
-        
+    timeout = 60 if DIST_INFO['rank'] > 0 else 5
+
+    while True:
+        try:
+            audio_path = file_queue.get(timeout=timeout)
+        except:
+            logging.warning(f"Process timeout")
+            return
+
         try:
             musion_task(
                 audio_path=audio_path,
                 **musion_kwargs['call_kwargs']
-        )
+            )
         except PermissionError as e:
-            print(f"PermissionError: {e}")
+            logging.error(f"PermissionError: {e}")
             exit()
-        except Exception as e:
-            logging.debug(f"Error processing {audio_path}: {e}")
+        except torch.cuda.OutOfMemoryError as e:
+            logging.warning(f"OOM, will requeue the task and retry later")
             torch.cuda.empty_cache()
+            try:
+                file_queue.put(audio_path)
+            except Exception:
+                logging.warning(f"Failed to requeue {audio_path}, server might be closed")
+            continue
+        except Exception as e:
+            logging.error(f"Error processing {audio_path}: {e}")
+            traceback.print_exc()
+            exit(1)
 
         with process_state["lock"]:
             process_state["processed"].value += 1

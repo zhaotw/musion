@@ -4,3 +4,4 @@ mido
 numpy>=1.22.4
 torchaudio>=0.11.0
 onnxruntime-gpu>=1.11.0 # PC and Linux. Change to onnxruntime==1.11.0 if on arm or Mac
+madmom @ git+https://github.com/CPJKU/madmom

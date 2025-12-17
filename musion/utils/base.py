@@ -28,6 +28,12 @@ class SaveConfig:
     dir_path: str
     keys: List[str] = None
 
+    def real_dir_path(self, path_input: str):
+        if self.dir_path == "same_with_input":
+            return os.path.dirname(path_input)
+        else:
+            return self.dir_path
+
 @dataclasses.dataclass
 class FeatConfig:
     mono: bool
@@ -64,8 +70,8 @@ class TaskDispatcher(metaclass=abc.ABCMeta):
     def __call__(self, path_input: Optional[Union[List[str], str]] = None, *args,
                  num_workers: int = 0, num_threads: int = 0, **kwargs: Any) -> dict:
         """
-        num_workers: number of workers for parallel processing
-        num_threads: number of threads for concurrent processing
+        num_workers: number of workers for parallel processing, per device
+        num_threads: number of threads for concurrent processing, per device
         """
 
         if 'audio_path' in kwargs:  # for backward compatibility
@@ -137,7 +143,7 @@ class TaskBase(metaclass=abc.ABCMeta):
         if path_input is not None:
             logging.debug(f'Processing file: {path_input} for task: {self.__class__.__name__}')
             if not overwrite and save_cfg and check_exist(path_input, save_cfg):
-                logging.info(f'File {path_input} already processed, skip.')
+                logging.debug(f'File {path_input} already processed, skip.')
                 return {}
 
         start_time = time.time()
@@ -152,8 +158,9 @@ class TaskBase(metaclass=abc.ABCMeta):
         return res
 
     def __save_res(self, res: dict, save_cfg: SaveConfig, path_input: str):
-        if not os.path.exists(save_cfg.dir_path):
-            os.makedirs(save_cfg.dir_path, exist_ok=True)
+        real_dir_path = save_cfg.real_dir_path(path_input)
+        if not os.path.exists(real_dir_path):
+            os.makedirs(real_dir_path, exist_ok=True)
         audio_name = get_file_name(path_input)
 
         for key in save_cfg.keys:
@@ -163,7 +170,7 @@ class TaskBase(metaclass=abc.ABCMeta):
                 logging.warning(f'Result for key: {key} of {audio_name} is None, will not save a file for it.')
                 continue
 
-            save_path = os.path.join(save_cfg.dir_path, audio_name + '.' + key)
+            save_path = os.path.join(real_dir_path, audio_name + '.' + key)
             self._save(key, save_path, res)
 
 class MusionBase(TaskBase):
@@ -214,4 +221,7 @@ class MusionBase(TaskBase):
         return super().__call__(audio_path, pcm, save_cfg=save_cfg, overwrite=overwrite)
 
     def _save(self, key, save_path, res):
+        # if res[key] is a number, convert it to a list
+        if isinstance(res[key], (int, float)):
+            res[key] = [res[key]]
         np.savetxt(save_path, res[key], fmt='%s')
