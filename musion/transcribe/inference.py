@@ -5,30 +5,54 @@ from typing import Optional
 import numpy as np
 import torch
 from torchaudio.transforms import MelSpectrogram, Resample
+import mido
+import pretty_midi
 
 import musion
 from musion.utils.base import FeatConfig, TaskDispatcher, MusionPCM
 from musion.utils.ort_musion_base import OrtMusionBase
 from musion.utils.tools import enframe, deframe
 from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
+from musion.transcribe.midi_utils import align_midi_with_beats, create_mido_midifile_stream
 
 MODULE_PATH = os.path.dirname(__file__)
 
 class Transcribe(TaskDispatcher): 
     def __init__(self, target_instrument: str):
-        if target_instrument == 'piano':
-            task_class = _PianoTranscribe
-        elif target_instrument == 'vocal':
-            task_class = _VocalTranscribe
+        task_class = globals().get(f'_{target_instrument}Transcribe', None)
+        if task_class:
+            super().__init__(task_class)
         else:
             raise ValueError(f"Unsupported instrument: {target_instrument}")
-        super().__init__(task_class)
 
-class _PianoTranscribe(OrtMusionBase):
+class TranscribeBase:
     def __init__(self, device: str = None) -> None:
-        super().__init__(
+        self.beat = musion.beat.inference._Beat(device)
+
+    def _align_midi_with_beats(self, midi, audio_path) -> mido.MidiFile:
+        beats = self.beat(audio_path=audio_path)['beats']
+        beats = np.asarray(beats)
+        if isinstance(midi, mido.MidiFile):
+            midi = create_mido_midifile_stream(midi)
+            midi = pretty_midi.PrettyMIDI(midi)
+        midi = align_midi_with_beats(midi, beats)
+        return midi
+
+    def _save(self, key, save_path, res):
+        if 'mid' in key:
+            res[key].save(save_path)
+
+    @property
+    def result_keys(self):
+        return ['mid']
+
+class _PianoTranscribe(TranscribeBase, OrtMusionBase):
+    def __init__(self, device: str = None) -> None:
+        TranscribeBase.__init__(self, device)
+        OrtMusionBase.__init__(self,
             os.path.join(MODULE_PATH, 'transcribe_piano.onnx'),
             device)
+
         mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
         mel_spec_cfg.pop('mono')
         self._feat = MelSpectrogram(**mel_spec_cfg).to(self.device)
@@ -68,7 +92,7 @@ class _PianoTranscribe(OrtMusionBase):
         (est_note_events, est_pedal_events) = RegressionPostProcessor().output_dict_to_midi_events(output_dict)
 
         midi = events_to_midi(est_note_events, est_pedal_events)
-
+        midi = self._align_midi_with_beats(midi, audio_path)
         return {'mid': midi}
 
     def _process_segment(self, segment):
@@ -76,17 +100,10 @@ class _PianoTranscribe(OrtMusionBase):
         feat = 10.0 * torch.log10(torch.clamp(feat, min=1e-10, max=np.inf)) # power to dB
         return [segment for segment in self._predict(feat[:, :, :, None].cpu().numpy())[0]]
 
-    @property
-    def result_keys(self):
-        return ['mid']
-    
-    def _save(self, key, save_path, res):
-        if 'mid' in key:
-            res[key].save(save_path)
-
-class _VocalTranscribe(OrtMusionBase):
+class _VocalTranscribe(TranscribeBase, OrtMusionBase):
     def __init__(self, device: str = None) -> None:
-        super().__init__(
+        TranscribeBase.__init__(self, device)
+        OrtMusionBase.__init__(self,
             os.path.join(MODULE_PATH, 'transcribe_vocal.onnx'),
             device)
         self.separate = musion.separate._Separate(device)
@@ -143,7 +160,9 @@ class _VocalTranscribe(OrtMusionBase):
         est_result = self.__frame2note(song_pred, onset_thres=0.4, 
                         offset_thres=0.5)
 
-        return {"vocals": est_result}
+        midi = self._align_midi_with_beats(self.note_seq_to_pretty_midi(est_result), audio_path)
+
+        return {"mid": midi}
 
     @staticmethod
     def __frame2note(frame_info, onset_thres, offset_thres, frame_size=1/49.8):
@@ -202,12 +221,19 @@ class _VocalTranscribe(OrtMusionBase):
             if len(pitch_counter) > 0:
                 result.append([current_onset, 
                                current_time, 
-                               max(set(pitch_counter), key=pitch_counter.count) + 36])
+                               int(max(set(pitch_counter), key=pitch_counter.count)) + 36])
             current_onset = None
 
         return result
 
-    @property
-    @staticmethod
-    def result_keys(self):
-        return ["vocals"]
+    def note_seq_to_pretty_midi(self, note_seq):
+        """
+        note_seq: [[onset_time, offset_time, pitch], ...]
+        """
+        midi = pretty_midi.PrettyMIDI()
+        instrument = pretty_midi.Instrument(program=65) # use 65(alto sax) to represent vocal
+        for note in note_seq:
+            note = pretty_midi.Note(90, note[2], note[0], note[1])
+            instrument.notes.append(note)
+        midi.instruments.append(instrument)
+        return midi

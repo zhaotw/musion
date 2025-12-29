@@ -23,7 +23,7 @@ Separate songs into "drums", "bass", "other", "vocals"
 Detect chorus part for pop songs
 
 [transcribe](musion/transcribe/README.md) automatic music transcription  
-Transcribe piano or vocal audio to onset, offset, and pitch, or even MIDI file.
+Transcribe piano or vocal audio to BEAT-ALIGNED MIDI file.
 
 ## Installation
 1. Using PyPI

@@ -22,7 +22,7 @@ def main():
     parser.add_argument('--save_keys', type=str, nargs='+',
                         help='Choose which keys to save in a file. Query for avalible keys by --show_keys.')
     parser.add_argument('--overwrite', action='store_true', help='Overwrite the results if they already exist.')
-    parser.add_argument('--target_instrument', type=str, choices=['piano', 'vocal'],
+    parser.add_argument('--target_instrument', type=str, choices=['Piano', 'Vocal'],
                         help='Specify the target instrument for the transcribe task.')
 
     args = parser.parse_args()
