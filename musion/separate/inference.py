@@ -69,7 +69,7 @@ class _Separate(OrtMusionBase):
         offset_and_len = []
         for offset in offsets:
             chunk = TensorChunk(torch.from_numpy(samples), offset, segment_length)
-            segments.append(chunk.padded(self.training_length))
+            segments.append(chunk.padded(self.training_length).numpy())
             offset_and_len.append((offset, chunk.length))
 
         res = self._batch_process(self._process_segment, segments)

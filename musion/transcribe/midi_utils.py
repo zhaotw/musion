@@ -10,6 +10,8 @@ import numpy as np
 import mido
 import pretty_midi
 
+MIDI_RESOLUTION = 960 # ticks per beat
+
 @dataclass
 class MidiEvent:
     """
@@ -64,7 +66,6 @@ def cc2event(control_changes):
 def get_meta_track(beats, numerator, ticks_per_beat):
     meta_track = mido.MidiTrack()
     meta_track.append(mido.MetaMessage('track_name', name="Tempo & Time Signature", time=0))
-
     meta_track.append(mido.MetaMessage('time_signature', numerator=1, denominator=4, time=0))
 
     past_ticks = 0
@@ -86,10 +87,9 @@ def get_meta_track(beats, numerator, ticks_per_beat):
 
     return meta_track
 
-def get_beat_aligned_track(midi_events, init_tempo, ticks_per_beat, inst_name, inst_program, inst_channel):
+def get_beat_aligned_track(midi_events, init_tempo, ticks_per_beat, inst_name, inst_program, channel):
     track = mido.MidiTrack()
 
-    channel = 9 if inst_name == 'Drums' else inst_channel
     track.append(mido.MetaMessage('track_name', name=inst_name, time=0))
     track.append(mido.Message('program_change', program=inst_program, time=0, channel=channel))
 
@@ -149,7 +149,7 @@ def align_midi_with_beats(midi: pretty_midi.PrettyMIDI, beats: np.ndarray) -> mi
         midi_events.extend(cc2event(inst.control_changes))
         midi_events.sort(key=lambda x: x.time)
 
-        track_with_tempo = get_beat_aligned_track(midi_events, tempo_changes[0].value, ticks_per_beat, track_name, program, channel)
+        track_with_tempo = get_beat_aligned_track(midi_events, tempo_changes[0].value, ticks_per_beat, track_name, program, 9 if inst.is_drum else channel)
         midi_with_tempo.tracks.append(track_with_tempo)
 
         if channel == 8: # skip drums channel

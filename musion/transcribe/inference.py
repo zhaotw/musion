@@ -1,19 +1,16 @@
 import os
-import dataclasses
 from typing import Optional
 
 import numpy as np
 import torch
-from torchaudio.transforms import MelSpectrogram, Resample
-import mido
+from torchaudio.transforms import Resample
 import pretty_midi
 
 import musion
 from musion.utils.base import FeatConfig, TaskDispatcher, MusionPCM
 from musion.utils.ort_musion_base import OrtMusionBase
-from musion.utils.tools import enframe, deframe
-from musion.transcribe.regression import RegressionPostProcessor, events_to_midi
-from musion.transcribe.midi_utils import align_midi_with_beats, create_mido_midifile_stream
+from musion.transcribe.base import TranscribeBase
+from musion.transcribe.piano.piano import _PianoTranscribe
 
 MODULE_PATH = os.path.dirname(__file__)
 
@@ -24,81 +21,6 @@ class Transcribe(TaskDispatcher):
             super().__init__(task_class)
         else:
             raise ValueError(f"Unsupported instrument: {target_instrument}")
-
-class TranscribeBase:
-    def __init__(self, device: str = None) -> None:
-        self.beat = musion.beat.inference._Beat(device)
-
-    def _align_midi_with_beats(self, midi, audio_path) -> mido.MidiFile:
-        beats = self.beat(audio_path=audio_path)['beats']
-        beats = np.asarray(beats)
-        if isinstance(midi, mido.MidiFile):
-            midi = create_mido_midifile_stream(midi)
-            midi = pretty_midi.PrettyMIDI(midi)
-        midi = align_midi_with_beats(midi, beats)
-        return midi
-
-    def _save(self, key, save_path, res):
-        if 'mid' in key:
-            res[key].save(save_path)
-
-    @property
-    def result_keys(self):
-        return ['mid']
-
-class _PianoTranscribe(TranscribeBase, OrtMusionBase):
-    def __init__(self, device: str = None) -> None:
-        TranscribeBase.__init__(self, device)
-        OrtMusionBase.__init__(self,
-            os.path.join(MODULE_PATH, 'transcribe_piano.onnx'),
-            device)
-
-        mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
-        mel_spec_cfg.pop('mono')
-        self._feat = MelSpectrogram(**mel_spec_cfg).to(self.device)
-
-    @property
-    def _feat_cfg(self) -> FeatConfig:
-        return FeatConfig(
-            mono=True,
-            sample_rate=16000,
-            n_fft=2048,
-            hop_length=160,
-            f_min=30,
-            f_max=8000,
-            n_mels=229,
-            norm="slaney",
-            mel_scale="slaney",
-        )
-
-    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
-        pcm = self._load_pcm(audio_path, pcm)
-        segs = enframe(pcm.samples.squeeze(), self._feat_cfg.sample_rate * 5, self._feat_cfg.sample_rate * 10)
-
-        result = self._batch_process(self._process_segment, segs, 2)
-
-        output_dict_names = [
-            'reg_onset_output', 'reg_offset_output', 'frame_output', 'velocity_output',
-            'reg_pedal_onset_output', 'reg_pedal_offset_output', 'pedal_frame_output'
-        ]
-        output_dict = {i: [] for i in output_dict_names}
-        for seg in result:
-            for key, value in zip(output_dict_names, seg):
-                output_dict[key].append(value)
-
-        for key in output_dict.keys():
-            output_dict[key] = deframe(np.asarray(output_dict[key]))
-
-        (est_note_events, est_pedal_events) = RegressionPostProcessor().output_dict_to_midi_events(output_dict)
-
-        midi = events_to_midi(est_note_events, est_pedal_events)
-        midi = self._align_midi_with_beats(midi, audio_path)
-        return {'mid': midi}
-
-    def _process_segment(self, segment):
-        feat = self._feat(torch.from_numpy(segment).to(self.device))
-        feat = 10.0 * torch.log10(torch.clamp(feat, min=1e-10, max=np.inf)) # power to dB
-        return [segment for segment in self._predict(feat[:, :, :, None].cpu().numpy())[0]]
 
 class _VocalTranscribe(TranscribeBase, OrtMusionBase):
     def __init__(self, device: str = None) -> None:

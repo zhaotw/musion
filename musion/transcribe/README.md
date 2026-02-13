@@ -1,5 +1,5 @@
 1. Piano Transcription
-Encapsulation for [Piano Transcription](https://github.com/bytedance/piano_transcription)
+Encapsulation for [Transkun](https://github.com/Yujia-Yan/Transkun)
 
 Transcribe a piano piece to score in midi format.
 
@@ -19,5 +19,5 @@ Input:
 
 Return:  
 {  
-    'vocals':  [ [note start time, note end time, note pitch] x n ] 
+    'vocals':  [ [note start time, note end time, note pitch] x n ]  
 }
