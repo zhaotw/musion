@@ -11,6 +11,7 @@ from musion.utils.base import FeatConfig, TaskDispatcher, MusionPCM
 from musion.utils.ort_musion_base import OrtMusionBase
 from musion.transcribe.base import TranscribeBase
 from musion.transcribe.piano.piano import _PianoTranscribe
+from musion.transcribe.drums.drums import _DrumsTranscribe
 
 MODULE_PATH = os.path.dirname(__file__)
 

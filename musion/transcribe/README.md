@@ -21,3 +21,15 @@ Return:
 {  
     'vocals':  [ [note start time, note end time, note pitch] x n ]  
 }
+
+3. Drums Transcription
+Encapsulation for [DrumTranscription](https://github.com/xavriley/DrumTranscription)
+
+Input:
+    audio file path or audio pcm
+
+Return:  
+{  
+    'mid':  mido.MidiFile  
+}
+
