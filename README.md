@@ -30,8 +30,11 @@ Transcribe piano, drums or vocal audio to BEAT-ALIGNED MIDI file.
 ```shell
 python -m pip install musion
 ```
+And you have to install madmom manullay due to some restrictions from the original package.
+```shell
+python -m pip install git+https://github.com/CPJKU/madmom
+```
 2. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
-
 
 ## Example Usage
 All the tools use the same procedure and method, only different at tool name.  

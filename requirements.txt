@@ -5,4 +5,3 @@ pretty_midi
 numpy>=1.22.4
 torchaudio>=0.11.0
 onnxruntime-gpu>=1.19.0
-madmom @ git+https://github.com/CPJKU/madmom
