@@ -153,6 +153,6 @@ def convert_to_std_result(beats: np.ndarray, downbeats: np.ndarray) -> None:
             next_downbeat = next(downbeats)
         else:
             counter += 1
-        res.append(f"{beat:.2f}\t{counter:d}")
+        res.append([round(beat.item(), 3), counter])
 
     return res

@@ -98,9 +98,10 @@ class OrtMusionBase(MusionBase):
         self.__batch_predict_pool = ThreadPoolExecutor(num_threads)
 
     def _load_pcm(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> MusionPCM:
-        pcm = super()._load_pcm(audio_path, pcm)
-        pcm.samples = pcm.samples.numpy()
-        return pcm
+        new_pcm = super()._load_pcm(audio_path, pcm)
+        if isinstance(new_pcm.samples, torch.Tensor):
+            new_pcm.samples = new_pcm.samples.cpu().numpy()
+        return new_pcm
 
     def _batch_process(self, fn: Callable, inputs: list, batch_size = 1) -> list:
         """

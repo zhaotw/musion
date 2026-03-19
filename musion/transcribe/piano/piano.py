@@ -128,12 +128,9 @@ class _PianoHeads(nn.Module):
 
         return velocity, ofValue, ofPresence
 
-class _PianoTranscribe(TranscribeBase, OrtMusionBase):
+class _PianoTranscribe(TranscribeBase):
     def __init__(self, device: str = None) -> None:
-        TranscribeBase.__init__(self, device)
-        OrtMusionBase.__init__(self,
-            os.path.join(MODULE_PATH, 'transcribe_piano.onnx'),
-            device)
+        super().__init__(os.path.join(MODULE_PATH, 'transcribe_piano.onnx'), device)
 
         mel_spec_cfg = dataclasses.asdict(self._feat_cfg)
         mel_spec_cfg.pop('mono')
@@ -169,7 +166,11 @@ class _PianoTranscribe(TranscribeBase, OrtMusionBase):
             n_mels=229,
         )
 
-    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> dict:
+    @property
+    def accept_input_stem(self) -> str:
+        return None
+
+    def _process_wo_beat_align(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> pretty_midi.PrettyMIDI:
         x = self._load_pcm(audio_path, pcm).samples
         x = torch.as_tensor(x, device=self.device)
         x = F.pad(x, (self.mix_pad, self.mix_pad))
@@ -230,8 +231,7 @@ class _PianoTranscribe(TranscribeBase, OrtMusionBase):
         eventsAll = self.resolveOverlapping(eventsAll)
 
         midi = self.events_to_midi(eventsAll, MIDI_RESOLUTION)
-        midi = self._align_midi_with_beats(midi, audio_path)
-        return {'mid': midi}
+        return midi
 
     def events_to_midi(self, notes, resolution): 
         outputMidi = pretty_midi.PrettyMIDI(resolution=resolution)

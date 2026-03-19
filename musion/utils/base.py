@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.WARNING)
 
 @dataclasses.dataclass
 class MusionPCM:
-    samples: torch.Tensor
+    samples: torch.Tensor # [channel, time]
     sample_rate: int
 
 @dataclasses.dataclass
@@ -132,6 +132,7 @@ class TaskBase(metaclass=abc.ABCMeta):
                  *args,
                  save_cfg: Optional[SaveConfig] = None, 
                  overwrite: bool = False,
+                 **kwargs: Any,
                  ) -> dict:
         """
         core function for processing ONE file
@@ -147,10 +148,12 @@ class TaskBase(metaclass=abc.ABCMeta):
                 return {}
 
         start_time = time.time()
-        res = self._process(path_input, *args)
+        res = self._process(path_input, *args, **kwargs)
 
         # Optionally save the result(s) to a file
-        if save_cfg and path_input:
+        if save_cfg and (path_input or "mix_audio_path" in kwargs):
+            if "mix_audio_path" in kwargs and path_input is None:
+                path_input = kwargs["mix_audio_path"]
             self.__save_res(res, save_cfg, path_input)
 
         logging.debug(f"{self.__class__.__name__}__call__ execution time: {time.time() - start_time}")
@@ -193,11 +196,13 @@ class MusionBase(TaskBase):
             logging.warning('Both audio path and pcm provided, will use audio path.')
 
         if audio_path:
-            samples, sr = torchaudio.load(audio_path)
+            samples, sr = torchaudio.load(audio_path, backend='ffmpeg')
             pcm = MusionPCM(samples, sr)
 
         if pcm.sample_rate != self._feat_cfg.sample_rate:
-            pcm.samples = torchaudio.transforms.Resample(pcm.sample_rate, self._feat_cfg.sample_rate)(
+            if pcm.sample_rate < self._feat_cfg.sample_rate:
+                logging.warning(f'Trying to estimate sampling rate from lower sample rate {pcm.sample_rate} Hz to higher {self._feat_cfg.sample_rate} Hz.')
+            pcm.samples = torchaudio.transforms.Resample(pcm.sample_rate, self._feat_cfg.sample_rate).to(pcm.samples.device)(
                 pcm.samples)
             pcm.sample_rate = self._feat_cfg.sample_rate
 
@@ -212,13 +217,15 @@ class MusionBase(TaskBase):
                  audio_path: Optional[str] = None, 
                  pcm: Optional[MusionPCM] = None,
                  save_cfg: Optional[SaveConfig] = None, 
-                 overwrite: bool = False) -> dict:
+                 overwrite: bool = False,
+                 **kwargs: Any,
+                 ) -> dict:
         """
         core function for processing ONE audio file
         pcm: Pre-loaded PCM data, will be used if audio_path is None
         overwrite: whether to overwrite the existing result file, only works when save_cfg is provided.
         """
-        return super().__call__(audio_path, pcm, save_cfg=save_cfg, overwrite=overwrite)
+        return super().__call__(audio_path, pcm, save_cfg=save_cfg, overwrite=overwrite, **kwargs)
 
     def _save(self, key, save_path, res):
         # if res[key] is a number, convert it to a list

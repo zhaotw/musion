@@ -37,7 +37,7 @@ python -m pip install git+https://github.com/CPJKU/madmom
 2. Download ONNX model files from https://zenodo.org/records/13906170, and put them in the corresponding folders.
 
 ## Example Usage
-All the tools use the same procedure and method, only different at tool name.  
+All the tools use the same procedure and method, only different at tool name. Refer to the README.md of each tool for more details.  
 Here is a example for the `struct` tool.
 ```python
 from musion.struct import Struct

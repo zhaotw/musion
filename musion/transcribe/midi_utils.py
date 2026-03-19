@@ -10,7 +10,7 @@ import numpy as np
 import mido
 import pretty_midi
 
-MIDI_RESOLUTION = 960 # ticks per beat
+MIDI_RESOLUTION = 3840 # ticks per beat
 
 @dataclass
 class MidiEvent:

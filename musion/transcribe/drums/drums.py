@@ -1,17 +1,16 @@
 import os
-from typing import Optional, Dict, List
+from typing import Optional, List
 
 import numpy as np
 import pretty_midi
 import madmom
 from madmom.audio.filters import LogarithmicFilterbank
-from madmom.audio.signal import FramedSignalProcessor, SignalProcessor
+from madmom.audio.signal import FramedSignalProcessor, Signal
 from madmom.audio.spectrogram import LogarithmicFilteredSpectrogramProcessor
 from madmom.audio.stft import ShortTimeFourierTransformProcessor
 from madmom.processors import SequentialProcessor
 
 from musion.utils.base import FeatConfig, MusionPCM
-from musion.utils.ort_musion_base import OrtMusionBase
 from musion.transcribe.base import *
 from musion.transcribe.drums.velocity import estimate_velocity
 from musion.separate.drums import _DrumsSeparate
@@ -21,42 +20,38 @@ MODULE_PATH = os.path.dirname(__file__)
 
 # Drum MIDI note numbers: ["BD", "SD", "TT", "HH", "CY+RD"]
 LABELS_5: List[int] = [35, 38, 47, 42, 49]
-FPS: int = 100
 DEFAULT_NOTE_DURATION: float = 0.01  # seconds
 DEFAULT_VELOCITY: int = 100  # Will be refined by estimate_velocity
 
-class _DrumsTranscribe(TranscribeBase, OrtMusionBase):
+class _DrumsTranscribe(TranscribeBase):
     def __init__(self, device: str = None) -> None:
-        TranscribeBase.__init__(self, device)
-        OrtMusionBase.__init__(self,
-            os.path.join(MODULE_PATH, 'transcribe_drums.onnx'),
-            device)
+        super().__init__(os.path.join(MODULE_PATH, 'transcribe_drums.onnx'), device)
 
         frameSize = self._feat_cfg.n_fft
         audio_sample_rate = self._feat_cfg.sample_rate
+        fps = self._feat_cfg.fps
 
-        sig = SignalProcessor(num_channels=1, sample_rate=audio_sample_rate)
-        frames = FramedSignalProcessor(frame_size=frameSize, fps=FPS)
+        frames = FramedSignalProcessor(frame_size=frameSize, fps=fps)
         stft = ShortTimeFourierTransformProcessor()
         spec = LogarithmicFilteredSpectrogramProcessor(
             num_channels=1,
             sample_rate=audio_sample_rate,
             filterbank=LogarithmicFilterbank,
             frame_size=frameSize,
-            fps=FPS,
+            fps=fps,
             num_bands=12,
             fmin=20,
             fmax=20000,
             norm_filters=True,
         )
 
-        self.pre_processor = SequentialProcessor((sig, frames, stft, spec))
+        self.pre_processor = SequentialProcessor((frames, stft, spec))
 
         # Peak picking thresholds for each drum type
         peak_thresholds: List[float] = [0.22, 0.24, 0.32, 0.22, 0.2]
         self.processors = [
             madmom.features.notes.NoteOnsetPeakPickingProcessor(
-                threshold=t, smooth=0, pre_avg=0.1, post_avg=0.01, pre_max=0.02, post_max=0.01, combine=0.02, fps=FPS)
+                threshold=t, smooth=0, pre_avg=0.1, post_avg=0.01, pre_max=0.02, post_max=0.01, combine=0.02, fps=fps)
             for t in peak_thresholds
         ]
 
@@ -73,8 +68,16 @@ class _DrumsTranscribe(TranscribeBase, OrtMusionBase):
             f_max=20000,
         )
 
-    def _process(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> Dict[str, mido.MidiFile]:
-        audio = self.pre_processor(audio_path)
+    @property
+    def accept_input_stem(self) -> str:
+        return 'drums'
+
+    def _process_wo_beat_align(self, audio_path: Optional[str] = None, pcm: Optional[MusionPCM] = None) -> mido.MidiFile:
+        audio = self._load_pcm(audio_path, pcm).samples.squeeze()
+
+        audio = Signal(audio, sample_rate=self._feat_cfg.sample_rate)
+        audio = self.pre_processor(audio)
+        
         # Reshape to add channel dimension: [num_frames, num_bands] -> [num_frames, num_bands, 1]
         audio = audio.reshape((audio.shape[0], audio.shape[1], 1))
 
@@ -97,12 +100,10 @@ class _DrumsTranscribe(TranscribeBase, OrtMusionBase):
                     end=onset_time + DEFAULT_NOTE_DURATION
                 )
                 instrument.notes.append(note)
-
-        drum_parts_separation_res = self.separate_drums(audio_path=audio_path)
+        
+        drum_parts_separation_res = self.separate_drums(audio_path=audio_path, pcm=pcm)
         estimate_velocity(midi, drum_parts_separation_res)
-        midi = self._align_midi_with_beats(midi, audio_path)
-
-        return {'mid': midi}
+        return midi
 
     def predict(self, audio: np.ndarray, limit_input_size: int = 60000) -> np.ndarray:
         """
