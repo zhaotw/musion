@@ -171,6 +171,9 @@ def get_loudness(
     return max_db, loudness_db.cpu().tolist()
 
 def is_monotonic_neighbour(x, n, neighbour):
+    if n < neighbour or n >= len(x) - neighbour:
+        return False
+
     for i in range(neighbour):
         if x[n - i] < x[n - i - 1]:
             return False

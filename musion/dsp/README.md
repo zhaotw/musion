@@ -6,5 +6,5 @@ If 1, usually means the song is monophonic, and can't be uesd to show a valid Mi
 
 Return:  
 {  
-    'mid_focus_level':  [ 0， 1 ]
+    'mid_focus_level':  [ 0， 1 ]  
 }
