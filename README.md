@@ -25,6 +25,9 @@ Detect chorus part for pop songs
 [transcribe](musion/transcribe/README.md) automatic music transcription  
 Transcribe piano, drums or vocal audio to BEAT-ALIGNED MIDI file.
 
+[mfl](musion/dsp/README.md) Mid-Focus Level 
+Determines the probability that a particular instrument dominates the song.
+
 ## Installation
 1. Using PyPI
 ```shell
